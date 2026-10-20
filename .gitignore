@@ -1,0 +1,17 @@
+# Environment configuration (Contains credentials & secrets)
+.env
+
+# Server & Engine logs / runtime caches
+WEB-INF/
+*.log
+
+# Operating System files
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+.DS_Store
+
+# Temporary editor / swap files
+*.tmp
+*.bak
+*~

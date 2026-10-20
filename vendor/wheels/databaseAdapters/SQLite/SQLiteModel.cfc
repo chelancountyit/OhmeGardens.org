@@ -1,0 +1,261 @@
+component extends="wheels.databaseAdapters.Base" output=false {
+
+	/**
+	 * Map SQLite types to CFML types.
+	 */
+	public string function $getType(required string type, string scale, string details) {
+		switch (LCase(arguments.type)) {
+			// SQLite stores every integer in up to 64 bits, and an INTEGER PRIMARY KEY id is the
+			// 64-bit rowid, so INTEGER binds as cf_sql_bigint (#4142). As cf_sql_integer, a value
+			// above 2^31 was rejected (Adobe), clamped (Lucee) or wrapped (BoxLang), and a
+			// lookup by such an id could hit a different row. Columns declared smaller stay 32-bit.
+			case "bigint":
+			case "int8":
+			case "integer":
+			case "int":
+				local.rv = "cf_sql_bigint";
+				break;
+
+			case "mediumint":
+			case "smallint":
+			case "tinyint":
+				local.rv = "cf_sql_integer";
+				break;
+
+			case "real":
+			case "double":
+			case "double precision":
+			case "float":
+				local.rv = "cf_sql_float";
+				break;
+
+			case "numeric":
+			case "decimal":
+				local.rv = "cf_sql_decimal";
+				break;
+
+			case "text":
+			case "varchar":
+			case "char":
+			case "clob":
+				local.rv = "cf_sql_varchar";
+				break;
+
+			case "blob":
+				local.rv = "cf_sql_blob";
+				break;
+
+			case "boolean":
+				local.rv = "cf_sql_bit";
+				break;
+
+			case "date":
+			case "datetime":
+			case "timestamp":
+			case "time":
+				// SQLite stores all date types as TEXT. Bind as varchar; date values are
+				// pre-formatted to ISO-8601 in $buildQueryParamValues before they reach the bind layer.
+				// Binding DATE / TIME as cf_sql_date / cf_sql_time made the driver store them
+				// as epoch milliseconds (#4093).
+				local.rv = "cf_sql_varchar";
+				break;
+
+			default:
+				$throwUnknownColumnType(arguments.type);
+				break;
+		}
+
+		return local.rv;
+	}
+
+	/**
+	 * Internal function. A cf_sql_bigint param whose values all fit in 32 bits binds as
+	 * cf_sql_integer (#4089). BoxLang binds cf_sql_bigint to SQLite as TEXT
+	 * (https://github.com/ortus-boxlang/BoxLang/issues/642), and SQLite only
+	 * converts text back to a number when it is compared with a column, so `HAVING SUM(col) > ?`
+	 * and other expression comparisons went wrong. Small values bind exactly as before; a value
+	 * outside the 32-bit range keeps cf_sql_bigint, and one out-of-range element keeps a whole
+	 * IN list cf_sql_bigint. Nulls and non-integer values are left unchanged.
+	 */
+	public struct function $queryParams(required struct settings) {
+		local.rv = super.$queryParams(argumentCollection = arguments);
+		if (
+			local.rv.cfsqltype == "cf_sql_bigint"
+			&& !(StructKeyExists(local.rv, "null") && local.rv.null)
+			&& $valuesFitIntegerRange(local.rv)
+		) {
+			local.rv.cfsqltype = "cf_sql_integer";
+		}
+		return local.rv;
+	}
+
+	/**
+	 * Internal function. True when every value of a query param (one value, or each element of
+	 * an IN list) is an integer literal within the cf_sql_integer range. Compared as digit
+	 * strings, never through a double.
+	 */
+	public boolean function $valuesFitIntegerRange(required struct param) {
+		local.range = $integerKeyRange(sqlType = "cf_sql_integer");
+		local.values = StructKeyExists(arguments.param, "list") && arguments.param.list
+			? ListToArray(arguments.param.value, arguments.param.separator)
+			: [arguments.param.value];
+		if (!ArrayLen(local.values)) {
+			return false;
+		}
+		for (local.value in local.values) {
+			local.digits = IsSimpleValue(local.value) ? $canonicalIntegerString(local.value) : "";
+			if (
+				!Len(local.digits)
+				|| $compareIntegerStrings(local.digits, local.range.min) < 0
+				|| $compareIntegerStrings(local.digits, local.range.max) > 0
+			) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Prepare query arguments before execution (SQLite has simpler syntax).
+	 */
+	public struct function $querySetup(
+		required array sql,
+		numeric limit = 0,
+		numeric offset = 0,
+		required boolean parameterize,
+		string $primaryKey = ""
+	) {
+		$convertMaxRowsToLimit(args = arguments);
+		$removeColumnAliasesInOrderClause(args = arguments);
+		$moveAggregateToHaving(args = arguments);
+		return $performQuery(argumentCollection = arguments);
+	}
+
+	/**
+	 * Override Base adapter's $identitySelect hook.
+	 */
+	public any function $lastIdLookup(
+		required struct queryAttributes,
+		required struct result,
+		required string primaryKey,
+		any returningIdentity = "",
+		required string insertSql
+	) {
+		local.query = $query(
+			sql = "SELECT last_insert_rowid() AS lastId",
+			argumentCollection = arguments.queryAttributes
+		);
+		return local.query.lastId;
+	}
+
+	/**
+	 * SQLite uses file-level locking and does not support advisory locks.
+	 * This is a no-op to allow code that uses advisory locks to run without errors on SQLite.
+	 */
+	public void function $acquireAdvisoryLock(required string name, numeric timeout = 10) {
+		// No-op: SQLite has file-level locking only.
+		// Advisory locks are not meaningful for SQLite.
+	}
+
+	/**
+	 * No-op release for SQLite.
+	 */
+	public void function $releaseAdvisoryLock(required string name) {
+		// No-op
+	}
+
+	/**
+	 * SQLite has no advisory-lock primitive — file-level locking only.
+	 * `$acquireAdvisoryLock` / `$releaseAdvisoryLock` stay no-ops and are
+	 * unused because this flag is false. Callers (`withAdvisoryLock`, the
+	 * lockingSpec guard) skip the fake lock instead of pretending it works.
+	 */
+	public boolean function $supportsAdvisoryLocks() {
+		return false;
+	}
+
+	/**
+	 * SQLite does not support SELECT ... FOR UPDATE.
+	 * Returns empty string to no-op.
+	 */
+	public string function $forUpdateClause() {
+		return "";
+	}
+
+	/**
+	 * Default VALUES syntax (same as MySQL).
+	 */
+	public string function $defaultValues() {
+		return " DEFAULT VALUES";
+	}
+
+	/**
+	 * Override Base adapter's function.
+	 * SQLite uses double-quotes to quote identifiers (ANSI SQL standard).
+	 */
+	public string function $quoteIdentifier(required string name) {
+		return """#arguments.name#""";
+	}
+
+	/**
+	 * SQLite upsert using ON CONFLICT ... DO UPDATE SET syntax.
+	 */
+	public array function $upsertSQL(
+		required string tableName,
+		required array columns,
+		required array uniqueBy,
+		required array updateColumns,
+		required array validProperties,
+		required array records,
+		required numeric batchStart,
+		required numeric batchEnd,
+		required struct propertyInfo
+	) {
+		local.sql = [];
+
+		// Build column list.
+		local.colList = "";
+		for (local.col in arguments.columns) {
+			if (Len(local.colList)) local.colList &= ", ";
+			local.colList &= $quoteIdentifier(local.col);
+		}
+
+		ArrayAppend(local.sql, "INSERT INTO #arguments.tableName# (#local.colList#) VALUES ");
+
+		// Build value rows.
+		for (local.r = arguments.batchStart; local.r <= arguments.batchEnd; local.r++) {
+			if (local.r > arguments.batchStart) {
+				ArrayAppend(local.sql, ", ");
+			}
+			ArrayAppend(local.sql, "(");
+			for (local.p = 1; local.p <= ArrayLen(arguments.validProperties); local.p++) {
+				if (local.p > 1) ArrayAppend(local.sql, ", ");
+				local.propName = arguments.validProperties[local.p];
+				local.val = StructKeyExists(arguments.records[local.r], local.propName) ? arguments.records[local.r][local.propName] : "";
+				ArrayAppend(local.sql, $buildBulkParam(value=local.val, propName=local.propName, propertyInfo=arguments.propertyInfo));
+			}
+			ArrayAppend(local.sql, ")");
+		}
+
+		// ON CONFLICT clause.
+		local.uniqueList = "";
+		for (local.u in arguments.uniqueBy) {
+			if (Len(local.uniqueList)) local.uniqueList &= ", ";
+			local.uniqueList &= $quoteIdentifier(local.u);
+		}
+
+		if (ArrayLen(arguments.updateColumns)) {
+			local.setClause = "";
+			for (local.uc in arguments.updateColumns) {
+				if (Len(local.setClause)) local.setClause &= ", ";
+				local.setClause &= $quoteIdentifier(local.uc) & " = excluded." & $quoteIdentifier(local.uc);
+			}
+			ArrayAppend(local.sql, " ON CONFLICT (#local.uniqueList#) DO UPDATE SET #local.setClause#");
+		} else {
+			ArrayAppend(local.sql, " ON CONFLICT (#local.uniqueList#) DO NOTHING");
+		}
+
+		return local.sql;
+	}
+
+}

@@ -1,0 +1,816 @@
+component {
+
+	// Boot-time sentinel meaning "the developer has not explicitly set
+	// allowEnvironmentSwitchViaUrl". Must never escape $init(): the setting is
+	// resolved back to a real boolean by $resolveAllowEnvironmentSwitchViaUrl()
+	// right after the config/settings.cfm includes (issue #3031).
+	variables.$envSwitchUnset = "__wheels_unset__";
+
+	public void function $init(struct keys = {}) {
+
+		// Create one Global subclass here, outside any Global mixin call and
+		// before the first `application.wo` call. On Adobe CF this initializes
+		// the engine's super-scope state for every Global mixin. Without it, the
+		// first request after a cold start fails with EmptyStackException when
+		// `$createObjectFromRoot` creates wheels.Public below (##3730). See
+		// wheels.events.SuperScopePrimer. Keep this the first statement.
+		CreateObject("component", "wheels.events.SuperScopePrimer");
+
+		// Embedding values from `Application.cfc`'s `this` scope into the current component's `this` scope.
+		for (key in keys) {
+			application[key] = keys[key];
+		}
+
+		// Abort if called from incorrect file.
+		application.wo.$abortInvalidRequest();
+
+		// Setup the Wheels storage struct for the current request.
+		application.wo.$initializeRequestScope();
+
+		if (StructKeyExists(application, "wheels")) {
+			// Set or reset all settings but make sure to pass along the reload password between forced reloads with "reload=x".
+			if (StructKeyExists(application.wheels, "reloadPassword")) {
+				local.oldReloadPassword = application.wheels.reloadPassword;
+			}
+			// Check old environment for environment switch
+			if (StructKeyExists(application.wheels, "allowEnvironmentSwitchViaUrl")) {
+				local.allowEnvironmentSwitchViaUrl = application.wheels.allowEnvironmentSwitchViaUrl;
+				local.oldEnvironment = application.wheels.environment;
+			}
+		}
+
+		application.$wheels = {};
+		if (StructKeyExists(local, "oldReloadPassword")) {
+			application.$wheels.reloadPassword = local.oldReloadPassword;
+		}
+
+		// Check and store server engine name, throw error if using a version that we don't support.
+		// Note: this must NOT be chained to the reloadPassword carryover above with `else` —
+		// engine detection has to run unconditionally or serverVersion is never set.
+		local.engine = $detectEngine(serverScope = server);
+		application.$wheels.serverName = local.engine.serverName;
+		application.$wheels.serverVersion = local.engine.serverVersion;
+		application.$wheels.serverVersionMajor = ListFirst(application.$wheels.serverVersion, ".,");
+
+		// Instantiate the engine adapter for centralized cross-engine behavior.
+		if (application.$wheels.serverName == "BoxLang") {
+			application.$wheels.engineAdapter = new wheels.engineAdapters.BoxLang.BoxLangAdapter(application.$wheels.serverVersion);
+		} else if (application.$wheels.serverName == "Lucee") {
+			application.$wheels.engineAdapter = new wheels.engineAdapters.Lucee.LuceeAdapter(application.$wheels.serverVersion);
+		} else if (application.$wheels.serverName == "RustCFML") {
+			application.$wheels.engineAdapter = new wheels.engineAdapters.RustCFML.RustCFMLAdapter(application.$wheels.serverVersion);
+		} else {
+			application.$wheels.engineAdapter = new wheels.engineAdapters.Adobe.AdobeAdapter(application.$wheels.serverVersion);
+		}
+
+		local.upgradeTo = application.wo.$checkMinimumVersion(
+			engine = application.$wheels.serverName,
+			version = application.$wheels.serverVersion
+		);
+		if (
+			Len(local.upgradeTo)
+			&& !StructKeyExists(application, "disableEngineCheck")
+			&& !StructKeyExists(url, "disableEngineCheck")
+		) {
+			local.type = "Wheels.EngineNotSupported";
+			local.message = "#application.$wheels.serverName# #application.$wheels.serverVersion# is not supported by Wheels.";
+			if (IsBoolean(local.upgradeTo)) {
+				Throw(type = local.type, message = local.message, extendedInfo = "Please use Lucee or Adobe ColdFusion instead.");
+			} else {
+				Throw(
+					type = local.type,
+					message = local.message,
+					extendedInfo = "Please upgrade to version #local.upgradeTo# or higher."
+				);
+			}
+		}
+
+		// Copy over the CGI variables we need to the request scope.
+		// Since we use some of these to determine URL rewrite capabilities we need to be able to access them directly on application start for example.
+		request.cgi = application.wo.$cgiScope();
+
+		// Set up containers for routes, caches, settings etc.
+		// BuildInfo is the authoritative source for version + build metadata.
+		// Cached on the app scope; values cannot change without a full restart.
+		application.$wheels.buildInfo = new wheels.BuildInfo();
+		application.$wheels.version = application.$wheels.buildInfo.version();
+		try {
+			application.$wheels.hostName = CreateObject("java", "java.net.InetAddress").getLocalHost().getHostName();
+		} catch (any e) {
+		}
+		application.$wheels.controllers = {};
+		application.$wheels.models = {};
+		// Per-app column-metadata cache (see databaseAdapters/Base.cfc $getColumns).
+		// Deliberately a SIBLING of `cache`, not a `cache.*` category: it stores raw
+		// query objects that live for the application lifetime, whereas every
+		// `cache.*` category holds {value, expiresAt} envelopes that the cull/count
+		// machinery ($addToCache / $cacheCount) walks and dereferences `.expiresAt`
+		// on. Putting schema queries under `cache.*` makes the cull throw.
+		application.$wheels.schemaColumnCache = {};
+		// Per-app mixin-integration plans (see Global.cfc $componentIntegrationPlan).
+		// Caches the directory scan + per-file createObject + getMetaData that
+		// $integrateComponents performs for wheels.model / wheels.controller /
+		// wheels.mapper, so that work runs once per app instead of on every model,
+		// controller, and mapper object materialization (issue #3213). Like the
+		// schema cache, it lives for the application lifetime and is rebuilt on reload.
+		application.$wheels.integrationPlans = {};
+		application.$wheels.controllerIntegration = {};
+		application.$wheels.helperFileCache = {};
+		application.$wheels.layoutFileCache = {};
+		application.$wheels.existingObjectFiles = {};
+		application.$wheels.nonExistingObjectFiles = {};
+		application.$wheels.directoryFiles = {};
+		application.$wheels.routes = [];
+		application.$wheels.middleware = [];
+		application.$wheels.pluginMiddleware = [];
+		application.$wheels.resourceControllerNaming = "plural";
+		application.$wheels.namedRoutePositions = {};
+		application.$wheels.mixins = {};
+		application.$wheels.cache = {};
+		application.$wheels.cache.sql = {};
+		application.$wheels.cache.image = {};
+		application.$wheels.cache.main = {};
+		application.$wheels.cache.action = {};
+		application.$wheels.cache.page = {};
+		application.$wheels.cache.partial = {};
+		application.$wheels.cache.query = {};
+		// The application data cache (appCacheFetch() and friends), kept apart so appCacheClear() and
+		// app keys never touch the framework's own entries.
+		application.$wheels.cache.data = {};
+		application.$wheels.cacheLastCulledAt = Now();
+
+		// Set up paths to various folders in the framework. When the app
+		// is deployed under a URL subpath (issue #2968), cgi.script_name
+		// may not match the public mount point — typical with CommandBox
+		// single-site → IIS subfolder migrations or reverse proxies that
+		// fold `/public/` out of the URL. The default derivation runs
+		// first so paths exist for any code that consumes them between
+		// here and the config/settings.cfm include below; the override
+		// (`set(subpath="/wheelsproject1")` or `WHEELS_SUBPATH` env var)
+		// is reapplied after settings.cfm loads.
+		local.paths = application.wo.$resolveFrameworkPaths(scriptName = request.cgi.script_name);
+		application.$wheels.webPath = local.paths.webPath;
+		application.$wheels.rootPath = local.paths.rootPath;
+		application.$wheels.rootcomponentPath = local.paths.rootcomponentPath;
+		application.$wheels.wheelsComponentPath = local.paths.wheelsComponentPath;
+
+		// Check old environment to see whether we're allowed to switch configuration.
+		// The setting boots as a non-boolean sentinel (NOT `true`) so that an explicit
+		// set(allowEnvironmentSwitchViaUrl=true) in config/settings.cfm is distinguishable
+		// from "the developer never set it" — see $resolveAllowEnvironmentSwitchViaUrl()
+		// below, which runs right after the settings includes and always resolves the
+		// setting back to a real boolean (issue #3031). The sentinel only ever exists
+		// between here and that resolution point within a single application start.
+		application.$wheels.allowEnvironmentSwitchViaUrl = variables.$envSwitchUnset;
+		if (StructKeyExists(local, "allowEnvironmentSwitchViaUrl") && !local.allowEnvironmentSwitchViaUrl) {
+			application.$wheels.allowEnvironmentSwitchViaUrl = false;
+		}
+
+		// Rate limit reload attempts: 5 failed password attempts within 5 minutes locks the IP
+		if (!StructKeyExists(application, "$reloadRateLimit")) {
+			application.$reloadRateLimit = {};
+		}
+		// Key on the trusted client IP: the socket address unless the running app's
+		// trustProxyHeaders setting opted into X-Forwarded-For (rightmost hop). On a cold
+		// start application.wheels does not exist yet, so trust resolves to false and the
+		// key falls back to the socket address.
+		local.reloadRateLimitKey = application.wo.$trustedClientIp();
+		local.reloadRateLimited = false;
+		if (StructKeyExists(application.$reloadRateLimit, local.reloadRateLimitKey)) {
+			local.rl = application.$reloadRateLimit[local.reloadRateLimitKey];
+			if (local.rl.count >= 5 && DateDiff("n", local.rl.firstAttempt, Now()) < 5) {
+				local.reloadRateLimited = true;
+			}
+			if (DateDiff("n", local.rl.firstAttempt, Now()) >= 5) {
+				StructDelete(application.$reloadRateLimit, local.reloadRateLimitKey);
+			}
+		}
+
+		// Set environment either from the url or the developer's environment.cfm file.
+		local.reloadPasswordMatched = false;
+		if (
+			!local.reloadRateLimited
+			&& StructKeyExists(URL, "reload")
+			&& !IsBoolean(URL.reload)
+			&& Len(url.reload)
+			&& StructKeyExists(application.$wheels, "reloadPassword")
+			&& Len(application.$wheels.reloadPassword)
+			&& StructKeyExists(URL, "password")
+			&& application.wo.$secureCompare(URL.password, application.$wheels.reloadPassword)
+		) {
+			local.reloadPasswordMatched = true;
+			application.$wheels.environment = URL.reload;
+			try {
+				writeLog(
+					file="wheels_security",
+					type="warning",
+					text="Environment switched to '" & URL.reload & "' via URL from " & local.reloadRateLimitKey
+				);
+			} catch (any e) {
+				// Fail silently if logging fails
+			}
+		} else {
+			application.wo.$include(template = "/config/environment.cfm");
+		}
+
+		// Track failed reload password attempts
+		if (
+			StructKeyExists(URL, "reload")
+			&& StructKeyExists(URL, "password")
+			&& !local.reloadRateLimited
+			&& !local.reloadPasswordMatched
+		) {
+			if (!StructKeyExists(application.$reloadRateLimit, local.reloadRateLimitKey)) {
+				application.$reloadRateLimit[local.reloadRateLimitKey] = {count: 0, firstAttempt: Now()};
+			}
+			application.$reloadRateLimit[local.reloadRateLimitKey].count++;
+			try {
+				writeLog(file="wheels_security", type="warning", text="Reload password rejected from #local.reloadRateLimitKey#");
+			} catch (any e) {
+			}
+		}
+
+		// Log successful reload
+		if (local.reloadPasswordMatched) {
+			try {
+				writeLog(file="wheels_security", type="information", text="Reload accepted from #local.reloadRateLimitKey# (environment: #URL.reload#)");
+			} catch (any e) {
+			}
+		}
+
+		// If we're not allowed to switch, override and replace with the old environment.
+		// At this point the setting can still be the boot sentinel (= "not explicitly
+		// set", which historically meant `true` here), so only an explicit or
+		// carried-over boolean false blocks the switch.
+		if (
+			IsBoolean(application.$wheels.allowEnvironmentSwitchViaUrl)
+			&& !application.$wheels.allowEnvironmentSwitchViaUrl
+			&& StructKeyExists(local, "oldEnvironment")
+		) {
+			application.$wheels.environment = local.oldEnvironment;
+		}
+
+		// Test-context start backstop. The test-context switch binds a
+		// second application `<name>_wheelsTest`. It must NEVER fully start outside
+		// development / testing: onApplicationStart re-runs the app's own start-up
+		// side effects (scheduler re-registration, autoMigrate, job registration)
+		// and a fresh scope ignores runtime maintenance mode. The constructor gate
+		// (events/testcontext.cfm) runs on WHEELS_ENV, which is not a trustworthy
+		// production signal, so refuse HERE on the config-resolved environment —
+		// before the config/settings include, the migrator, and the app's own
+		// onapplicationstart.cfm below. Clear the scope so a second request
+		// re-enters onApplicationStart and is refused again, never served from a
+		// half-initialised application. Response is a minimal 403 with no detail
+		// (production-safe on Adobe and BoxLang: literal cfheader args, no
+		// attributeCollection; script `abort`, never a bare cfabort).
+		if (
+			Len(application.applicationName) >= 11
+			&& Right(application.applicationName, 11) == "_wheelsTest"
+			&& application.$wheels.environment != "development"
+			&& application.$wheels.environment != "testing"
+		) {
+			StructDelete(application, "wheels");
+			StructDelete(application, "$wheels");
+			cfheader(statuscode = 403);
+			cfheader(name = "Content-Type", value = "text/plain; charset=utf-8");
+			writeOutput("Forbidden");
+			abort;
+		}
+
+		// Rewrite settings based on web server rewrite capabilites.
+		application.$wheels.rewriteFile = "index.cfm";
+		if (Right(request.cgi.script_name, 12) == "/" & application.$wheels.rewriteFile) {
+			application.$wheels.URLRewriting = "On";
+		} else if (Len(request.cgi.path_info)) {
+			application.$wheels.URLRewriting = "Partial";
+		} else {
+			application.$wheels.URLRewriting = "Off";
+		}
+
+		// Canonical base URL for absolute links, redirects, and asset URLs. When set
+		// with set(baseUrl="https://your-host") it supplies the scheme/host/port for
+		// absolute URLs regardless of how the request arrived; empty means derive
+		// them from the incoming request (the historical behaviour).
+		application.$wheels.baseUrl = "";
+
+		// Set datasource name to same as the folder the app resides in unless the developer has set it with the global setting already.
+		if (StructKeyExists(application, "dataSource")) {
+			application.$wheels.dataSourceName = application.dataSource;
+		} else {
+			application.$wheels.dataSourceName = LCase(
+				ListLast(GetDirectoryFromPath(GetBaseTemplatePath()), Right(GetDirectoryFromPath(GetBaseTemplatePath()), 1))
+			);
+		}
+
+		// Test framework: "testbox" (default) or "rocketunit"
+		if (!StructKeyExists(application.$wheels, "testFramework")) {
+			application.$wheels.testFramework = "testbox";
+		}
+
+		// Enable or disable major components
+		application.$wheels.enablePluginsComponent = true;
+		application.$wheels.enableMigratorComponent = true;
+		application.$wheels.enablePublicComponent = false;
+		if (application.$wheels.environment == "development") {
+			application.$wheels.enablePublicComponent = true;
+		}
+
+		// Where the unpacked local docs bundle lives. Empty means auto-resolve
+		// to <CLI home>/docs/<frameworkVersion>/ — see Public::$docsBundleRoot().
+		// Set explicitly only when serving the bundle from elsewhere.
+		if (!StructKeyExists(application.$wheels, "docsBundlePath")) {
+			application.$wheels.docsBundlePath = "";
+		}
+
+		// Compatibility opt-out for the app test runner. When
+		// `<datasource>_test` is absent, /wheels/app/tests refuses by default
+		// (never silently runs specs against the primary datasource). An app that
+		// deliberately has no separate test database can set this true in
+		// config/settings.cfm; an OMITTED useTestDB (e.g. an older CLI that cannot
+		// send useTestDB=false) then runs against the primary datasource with a
+		// warning instead of being refused. An explicit useTestDB=true still
+		// requires the test database regardless of this setting.
+		application.$wheels.allowTestsAgainstPrimaryDatasource = false;
+
+		// Create migrations object and set default settings.
+		application.$wheels.autoMigrateDatabase = false;
+		// Strict boot migration (#4063): a migration that cannot run stops the
+		// application from starting. WHEELS_MIGRATE_ON_BOOT overrides it.
+		application.$wheels.migrateOnBoot = false;
+		// New default names (F15 Phase 1). The migrator's $detectSystemTables()
+		// helper at runtime will flip these back to the legacy `c_o_r_e_*`
+		// names if it finds those tables already in the database, so existing
+		// 4.0-SNAPSHOT apps continue to work without manual intervention.
+		// New installs get the clean `wheels_*` prefix.
+		application.$wheels.migratorTableName = "wheels_migrator_versions";
+		application.$wheels.levelsTableName = "wheels_levels";
+		// Cross-process migration lock (#4134): instances sharing a database run its migrations
+		// one at a time. A waiting instance gives up after migrationLockTimeout seconds; a holder
+		// that died frees the lock once its lease (renewed before each step) runs out.
+		application.$wheels.migratorLockTableName = "wheels_migrator_locks";
+		// The jobs tick route (/wheels/jobs/tick) is off unless a token is set. The token goes in the
+		// X-Wheels-Jobs-Token header; ?token= is accepted only with jobsRunnerTokenInQuery = true
+		// (a token in a URL ends up in access logs).
+		application.$wheels.jobsRunnerToken = "";
+		application.$wheels.jobsRunnerTokenInQuery = false;
+		// What each call to the tick route runs (JobRunner.tick()): at most this many jobs (1-1000),
+		// each capped at this many seconds (1-86400), from these queues ("" = every queue). Settings,
+		// not request parameters, so a caller holding the token can't widen the work one request does.
+		application.$wheels.jobsRunnerTickMaxJobs = 1;
+		application.$wheels.jobsRunnerTickTimeout = 300;
+		application.$wheels.jobsRunnerTickQueues = "";
+		// Job schedules (config/schedules.cfm) are checked and their due slots enqueued at most
+		// this often, from every worker poll, processQueue() and JobRunner.tick(). 0 = never.
+		application.$wheels.jobsScheduleCheckSeconds = 15;
+		// Background-job tables: true creates and upgrades them automatically at runtime; false
+		// leaves them to the app's own migration (`wheels jobs install`), for multi-server apps.
+		application.$wheels.jobsAutoCreateTables = true;
+		// A background job that has heartbeated is reclaimed once its heartbeats stop for this many
+		// seconds, even inside its timeout (0 = off; minimum 30). A job's this.heartbeatGrace wins.
+		application.$wheels.jobsHeartbeatGraceSeconds = 300;
+		application.$wheels.migrationLockTimeout = 300;
+		application.$wheels.migrationLockLease = 3600;
+		application.$wheels.createMigratorTable = true;
+		application.$wheels.writeMigratorSQLFiles = false;
+		// Preserve column / table / index name case as written in the migration.
+		// Set to "lower" or "upper" to fold names. Issue #2313 (F19): the
+		// previous "lower" default silently rewrote `t.string("publishedAt")`
+		// into a `publishedat` column on case-preserving engines (notably
+		// SQLite), which surprised users. Apps that depended on the old
+		// behavior can opt back in via `set("migratorObjectCase", "lower")`
+		// in `config/settings.cfm`.
+		application.$wheels.migratorObjectCase = "";
+		application.$wheels.allowMigrationDown = false;
+		application.$wheels.migrationLevel = 1;
+		if (application.$wheels.environment == "development") {
+			application.$wheels.allowMigrationDown = true;
+		}
+
+		// Load domain-specific settings from includes
+		include "/wheels/events/init/caching.cfm";
+		include "/wheels/events/init/security.cfm";
+		include "/wheels/events/init/debugging.cfm";
+		include "/wheels/events/init/orm.cfm";
+		include "/wheels/events/init/views.cfm";
+		include "/wheels/events/init/formats.cfm";
+		include "/wheels/events/init/functions.cfm";
+
+		// Set a flag to indicate that all settings have been loaded.
+		application.$wheels.initialized = true;
+
+		// Load general developer settings first, then override with environment specific ones.
+		// $includeConfig captures any output the file produces and warns via the application
+		// log if non-empty — usually the signal that a config/*.cfm file is missing its
+		// cfscript wrapper, in which case the engine parses cfscript-style code as markup
+		// and the registrations silently never run. (Note: Lucee 7's tag scanner reads
+		// CFC comments before compilation and treats literal cf-tags as unclosed errors,
+		// so this comment deliberately avoids putting the angle-bracketed form inline.)
+		application.wo.$includeConfig(template = "/config/settings.cfm");
+		if (FileExists(ExpandPath("/config/#application.$wheels.environment#/settings.cfm"))) {
+			application.wo.$includeConfig(template = "/config/#application.$wheels.environment#/settings.cfm");
+		}
+
+		// Parse set(baseUrl=...) now: a malformed value stops the application
+		// from starting instead of failing the first absolute URL (#3842).
+		application.wo.$cacheBaseUrl(application.$wheels);
+
+		// Default coreTestDataSourceName to the dataSourceName the settings files set
+		// (not the folder-derived one above), unless they set it themselves.
+		application.wo.$defaultCoreTestDataSourceName(application.$wheels);
+
+		// Re-derive framework paths now that settings.cfm has loaded. Detection
+		// priority for the URL subpath (issue #2968):
+		//   1. set(subpath="/wheelsproject1") in config/settings.cfm
+		//   2. WHEELS_SUBPATH environment variable (CommandBox / IIS deploys)
+		//   3. existing cgi.script_name derivation (no-op when both are empty)
+		// `server.system.environment` is the cross-engine-safe env read; Lucee's
+		// `getSystemSetting()` is not portable.
+		local.configuredSubpath = "";
+		if (StructKeyExists(application.$wheels, "subpath") && Len(Trim(application.$wheels.subpath))) {
+			local.configuredSubpath = application.$wheels.subpath;
+		} else if (
+			StructKeyExists(server, "system")
+			&& StructKeyExists(server.system, "environment")
+			&& StructKeyExists(server.system.environment, "WHEELS_SUBPATH")
+			&& Len(Trim(server.system.environment.WHEELS_SUBPATH))
+		) {
+			local.configuredSubpath = server.system.environment.WHEELS_SUBPATH;
+		}
+		if (Len(local.configuredSubpath)) {
+			local.paths = application.wo.$resolveFrameworkPaths(
+				scriptName = request.cgi.script_name,
+				subpath = local.configuredSubpath
+			);
+			application.$wheels.webPath = local.paths.webPath;
+			application.$wheels.rootPath = local.paths.rootPath;
+			application.$wheels.rootcomponentPath = local.paths.rootcomponentPath;
+			application.$wheels.wheelsComponentPath = local.paths.wheelsComponentPath;
+			application.$wheels.subpath = local.configuredSubpath;
+		}
+
+		// Resolve allowEnvironmentSwitchViaUrl to a real boolean now that the developer's
+		// settings have loaded. If it is still the boot sentinel the framework default
+		// applies: disabled in production-like environments, enabled everywhere else.
+		// An explicit boolean from config/settings.cfm — including explicit `true`, which
+		// used to be indistinguishable from the default and silently discarded — is
+		// honored as-is in every environment (issue #3031).
+		application.$wheels.allowEnvironmentSwitchViaUrl = $resolveAllowEnvironmentSwitchViaUrl(
+			settingValue = application.$wheels.allowEnvironmentSwitchViaUrl,
+			environment = application.$wheels.environment
+		);
+
+		// Warn if reloadPassword is empty — URL-based reload and environment switching are disabled.
+		if (!Len(application.$wheels.reloadPassword)) {
+			try {
+				writeLog(file="wheels_security", type="warning", text="Wheels: reloadPassword is empty — URL-based environment switching and application reload are disabled until a password is set in config/settings.cfm");
+			} catch (any e) {}
+		}
+
+		// Load DI service registrations. $includeConfig captures any output the file
+		// produces — see the matching note on the settings.cfm include above.
+		if (FileExists(ExpandPath("/config/services.cfm"))) {
+			application.wo.$includeConfig(template = "/config/services.cfm");
+		}
+		// Environment-specific services override.
+		if (FileExists(ExpandPath("/config/#application.$wheels.environment#/services.cfm"))) {
+			application.wo.$includeConfig(template = "/config/#application.$wheels.environment#/services.cfm");
+		}
+
+		// Clear query (cfquery) and page (cfcache) caches.
+		if (application.$wheels.clearQueryCacheOnReload or !StructKeyExists(application.$wheels, "cacheKey")) {
+			application.$wheels.cacheKey = Hash(CreateUUID());
+		}
+		if (application.$wheels.clearTemplateCacheOnReload) {
+			application.wo.$cache(action = "flush");
+		}
+
+		// Build the list of public framework helper methods mixed onto every
+		// controller (from wheels.Global + wheels.controller.* + wheels.view.*).
+		// $callAction() in vendor/wheels/controller/processing.cfc rejects any
+		// request whose action segment matches one of these names so global
+		// helpers like env(), model(), redirectTo() are never URL-invokable.
+		application.$wheels.protectedControllerMethods = application.wo.$buildProtectedControllerMethods();
+
+		// Companion struct-as-set for O(1) membership checks on the dispatch hot
+		// path (see $callAction()); the comma-list above is kept for callers that
+		// expect that shape.
+		application.$wheels.protectedControllerMethodsLookup = application.wo.$protectedControllerMethodsLookup(
+			application.$wheels.protectedControllerMethods
+		);
+
+		// Enable the main GUI Component
+		if (application.$wheels.enablePublicComponent) {
+			application.$wheels.public = application.wo.$createObjectFromRoot(path = "wheels", fileName = "Public", method = "$init");
+		}
+
+		// Reload the plugins each time we reload the application.
+		if (application.$wheels.enablePluginsComponent) {
+			application.wo.$loadPlugins();
+		}
+
+		// Discover and load packages from vendor/ (after plugins, before mixin injection).
+		if (application.$wheels.enablePackagesComponent) {
+			application.wo.$loadPackages();
+		}
+
+		// Allow developers to inject plugins and packages into the application variables scope.
+		if (!StructIsEmpty(application.$wheels.mixins)) {
+			application.$wheels.engineAdapter.prepareDIComplete(variables, this);
+			new wheels.Plugins().$initializeMixins(variables);
+		}
+
+		// Create the mapper that will handle creating routes.
+		// Needs to be before $loadRoutes and after $loadPlugins/$loadPackages.
+		application.$wheels.mapper = application.wo.$createObjectFromRoot(path = "wheels", fileName = "Mapper", method = "$init");
+
+		// Load developer routes and adds the default Wheels routes (unless the developer has specified not to).
+		application.wo.$loadRoutes();
+
+		// Create the dispatcher that will handle all incoming requests.
+		application.$wheels.dispatch = application.wo.$createObjectFromRoot(path = "wheels", fileName = "Dispatch", method = "$init");
+
+		// Snapshot the app/global/*.cfm mtimes so the per-request soft-reload
+		// check (in $runOnRequestStart) has a baseline to compare against.
+		application.$wheels.globalIncludesSnapshot = application.wo.$snapshotGlobalIncludes();
+
+		// GHSA-8r22: snapshot the three IP-debug flags as configured at app start.
+		// An app that still carries the pre-4.1.2 IP-debug block in its own
+		// Application.cfc writes these into the shared application.wheels scope per
+		// request, so $get() serves this boot snapshot for them instead of the
+		// shared value (a concurrent request must not see another client's grant).
+		// $set() keeps the snapshot in step so runtime set() of these flags works.
+		application.$wheels.$debugSettingsSnapshot = {};
+		if (StructKeyExists(application.$wheels, "showErrorInformation")) {
+			application.$wheels.$debugSettingsSnapshot.showErrorInformation = application.$wheels.showErrorInformation;
+		}
+		if (StructKeyExists(application.$wheels, "showDebugInformation")) {
+			application.$wheels.$debugSettingsSnapshot.showDebugInformation = application.$wheels.showDebugInformation;
+		}
+		if (StructKeyExists(application.$wheels, "enablePublicComponent")) {
+			application.$wheels.$debugSettingsSnapshot.enablePublicComponent = application.$wheels.enablePublicComponent;
+		}
+
+		// Assign it all to the application scope in one atomic call.
+		application.wheels = application.$wheels;
+		StructDelete(application, "$wheels");
+
+		// Enable the migrator component
+		if (application.wheels.enableMigratorComponent) {
+			application.wheels.migrator = application.wo.$createObjectFromRoot(path = "wheels", fileName = "Migrator", method = "init");
+		}
+
+		// Initialize the seeder component (always available when migrator is enabled)
+		if (application.wheels.enableMigratorComponent) {
+			application.wheels.seeder = application.wo.$createObjectFromRoot(path = "wheels", fileName = "Seeder", method = "init");
+		}
+
+		// Run the developer's on application start code.
+		application.wo.$include(template = "#application.wheels.eventPath#/onapplicationstart.cfm");
+
+		// Dev-mode: verify interface contracts after all mixins are loaded
+		if (application.wheels.environment == "development") {
+			application.wo.$verifyInterfaceContracts();
+		}
+
+		// Migrate the database at start if requested (#4063). A boolean
+		// WHEELS_MIGRATE_ON_BOOT environment variable overrides both settings;
+		// set(migrateOnBoot=true) migrates strictly (a migration that cannot run
+		// stops the start); set(autoMigrateDatabase=true) keeps its lenient
+		// behaviour (failures are logged and the application still starts).
+		if (application.wheels.enableMigratorComponent) {
+			local.bootMigration = $resolveBootMigration(
+				migrateOnBoot = application.wheels.migrateOnBoot,
+				autoMigrateDatabase = application.wheels.autoMigrateDatabase,
+				envValue = $bootMigrationEnvValue()
+			);
+			if (local.bootMigration == "strict") {
+				$runStrictBootMigration(application.wheels.migrator);
+			} else if (local.bootMigration == "lenient") {
+				application.wheels.migrator.migrateToLatest();
+			}
+		}
+
+		// Sync the code-defined recurring job schedules (config/schedules.cfm) to
+		// wheels_job_schedules. Runs after any boot migration and never fails the start.
+		$syncJobSchedules();
+
+		// Redirect away from reloads on GET requests.
+		if (application.wheels.redirectAfterReload && StructKeyExists(url, "reload") && cgi.request_method == "get") {
+			if (StructKeyExists(cgi, "path_info") && Len(cgi.path_info)) {
+				local.url = cgi.path_info;
+			} else if (StructKeyExists(cgi, "path_info")) {
+				local.url = "/";
+			} else {
+				local.url = cgi.script_name;
+			}
+			local.oldQueryString = ListToArray(cgi.query_string, "&");
+			local.newQueryString = [];
+			local.iEnd = ArrayLen(local.oldQueryString);
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				local.keyValue = local.oldQueryString[local.i];
+				local.key = ListFirst(local.keyValue, "=");
+				if (!ListFindNoCase("reload,password,lock", local.key)) {
+					ArrayAppend(local.newQueryString, local.keyValue);
+				}
+			}
+			if (ArrayLen(local.newQueryString)) {
+				local.queryString = ArrayToList(local.newQueryString, "&");
+				local.url = "#local.url#?#local.queryString#";
+			}
+			// Defer the actual redirect to EventMethods.$runOnRequestStart (issue #3054).
+			// Two reasons this block must not redirect directly:
+			// 1. This component is a plain `component {` with no extends and no mixins,
+			//    so framework helpers like $location() (vendor/wheels/Global.cfc) are not
+			//    in scope — the bare $location() that used to sit here threw "No matching
+			//    function [$LOCATION] found" during the post-switch cold start.
+			// 2. Even a resolvable cflocation is wrong here: it aborts the request while
+			//    onApplicationStart is still running, the engine then discards the
+			//    half-started application, and the next request cold-starts from
+			//    config/environment.cfm — silently reverting URL environment switches
+			//    into production/maintenance (the two environments that auto-enable
+			//    redirectAfterReload, see events/init/orm.cfm). Verified on Lucee 7.
+			// The request scope survives into $runOnRequestStart, which runs in this
+			// same request after the application (including a switched environment)
+			// has been fully initialized and persisted, so aborting there is safe.
+			request.wheels.redirectAfterReloadUrl = local.url;
+		}
+	}
+
+	/**
+	 * Resolves the allowEnvironmentSwitchViaUrl setting to a real boolean after the
+	 * config/settings.cfm includes have run. Any explicit boolean the developer set is
+	 * honored as-is in every environment — this is what makes the documented production
+	 * override set(allowEnvironmentSwitchViaUrl=true) actually work (issue #3031).
+	 * A non-boolean value means the developer never touched the setting (it still holds
+	 * the boot sentinel), so the framework default applies: disabled in production-like
+	 * environments, enabled everywhere else.
+	 */
+	public boolean function $resolveAllowEnvironmentSwitchViaUrl(
+		required any settingValue,
+		required string environment
+	) {
+		if (IsBoolean(arguments.settingValue)) {
+			return arguments.settingValue;
+		}
+		return !ListFindNoCase("production,testing,maintenance", arguments.environment);
+	}
+
+	/**
+	 * How the application migrates the database at start (#4063): "strict",
+	 * "lenient" or "none".
+	 *
+	 * A WHEELS_MIGRATE_ON_BOOT environment variable holding a boolean overrides
+	 * both settings: true migrates strictly, false never migrates at start, even
+	 * with set(autoMigrateDatabase=true). `wheels deploy` sets it per host (true
+	 * on the one host that migrates, false on every other) so hosts sharing a
+	 * database do not all migrate at once. An empty value means unset; any other
+	 * non-boolean value is ignored, with a warning in the wheels log. Without it,
+	 * set(migrateOnBoot=true) migrates strictly and set(autoMigrateDatabase=true)
+	 * leniently.
+	 *
+	 * @envValue The WHEELS_MIGRATE_ON_BOOT value, or "" when it is not set.
+	 */
+	public string function $resolveBootMigration(
+		required any migrateOnBoot,
+		required any autoMigrateDatabase,
+		string envValue = ""
+	) {
+		local.envValue = Trim(arguments.envValue);
+		if (Len(local.envValue)) {
+			if (IsBoolean(local.envValue)) {
+				return local.envValue ? "strict" : "none";
+			}
+			WriteLog(
+				file = "wheels",
+				type = "warning",
+				text = "WHEELS_MIGRATE_ON_BOOT='#local.envValue#' is not a boolean and was ignored."
+			);
+		}
+		if (IsBoolean(arguments.migrateOnBoot) && arguments.migrateOnBoot) {
+			return "strict";
+		}
+		if (IsBoolean(arguments.autoMigrateDatabase) && arguments.autoMigrateDatabase) {
+			return "lenient";
+		}
+		return "none";
+	}
+
+	/**
+	 * Migrates to the latest version and fails the application start when any
+	 * migration is still pending afterwards (#4063). The migrator reports a
+	 * failed step in its output rather than throwing, so the check is on the
+	 * outcome: every available migration must be applied. The failure is written
+	 * to the wheels log and thrown as Wheels.BootMigrationFailed, so every request,
+	 * the deploy health check included, fails until the cause is fixed.
+	 */
+	public string function $runStrictBootMigration(required any migrator) {
+		local.output = arguments.migrator.migrateToLatest();
+		local.pending = [];
+		for (local.migration in arguments.migrator.getAvailableMigrations()) {
+			if (local.migration.status != "migrated") {
+				ArrayAppend(local.pending, local.migration.version);
+			}
+		}
+		if (ArrayLen(local.pending)) {
+			local.message = "Boot migration did not complete: #ArrayLen(local.pending)# migration(s) still pending (#ArrayToList(local.pending, ', ')#), so the application will not start.";
+			WriteLog(file = "wheels", type = "error", text = local.message & " " & Trim(local.output));
+			Throw(type = "Wheels.BootMigrationFailed", message = local.message, detail = Trim(local.output));
+		}
+		return local.output;
+	}
+
+	/**
+	 * Internal function. Sync config/schedules.cfm to wheels_job_schedules (a missing file
+	 * disables code-defined schedules already there). Logged, never thrown: a schedules problem
+	 * must not stop the application starting.
+	 */
+	public void function $syncJobSchedules() {
+		try {
+			if (FileExists(ExpandPath("/config/schedules.cfm"))) {
+				new wheels.JobScheduler().$syncFromConfig();
+			} else {
+				local.scheduler = new wheels.JobScheduler();
+				if (local.scheduler.$schedulesTableExists()) {
+					local.scheduler.$syncFromConfig();
+				}
+			}
+		} catch (any e) {
+			WriteLog(type = "error", file = "wheels_jobs", text = "Could not sync config/schedules.cfm: #e.message#");
+		}
+	}
+
+	/**
+	 * The WHEELS_MIGRATE_ON_BOOT environment variable, or "" when it is not set.
+	 */
+	public string function $bootMigrationEnvValue() {
+		return $readEnvironmentVariable("WHEELS_MIGRATE_ON_BOOT");
+	}
+
+	/**
+	 * A process environment variable, or "" when it is not set. Read the same way
+	 * as WHEELS_SUBPATH and env(): `server.system.environment`, which Lucee, BoxLang
+	 * and Adobe ColdFusion 2023/2025 all populate (Lucee's getSystemSetting() is
+	 * not portable). BootMigrationSpec reads PATH through this function on every
+	 * engine in the compat matrix.
+	 */
+	public string function $readEnvironmentVariable(required string name) {
+		if (
+			StructKeyExists(server, "system")
+			&& StructKeyExists(server.system, "environment")
+			&& StructKeyExists(server.system.environment, arguments.name)
+		) {
+			return server.system.environment[arguments.name];
+		}
+		return "";
+	}
+
+	/**
+	 * Resolves the engine name and version from a server-scope-shaped struct.
+	 * Extracted from $init() so the detection ladder is unit-testable.
+	 *
+	 * Order matters — most-specific marker first. RustCFML impersonates Lucee:
+	 * it exposes a server.lucee struct (server.lucee.version reports a Lucee
+	 * 7.x version, server.lucee.versionName is "RustCFML"), so its
+	 * server.coldfusion.productName marker must be checked BEFORE the Lucee
+	 * branch or RustCFML is misclassified as Lucee and its dedicated engine
+	 * adapter becomes dead code. Other probe-verified RustCFML markers:
+	 * server.java.vendor = "RustCFML (no JVM)".
+	 *
+	 * As of RustCFML v0.507.0, reportAsLucee defaults to true: the productName
+	 * marker reports "Lucee" (with Lucee's productVersion) and the real engine
+	 * version moves to server.lucee.version behind a Lucee-major prefix
+	 * ("7.0.519.0" means RustCFML 0.519.0). The one field upstream documents
+	 * as the stable identity marker — their own isRustCFML() BIF keys on it —
+	 * is server.lucee.versionName == "RustCFML", so that branch must also run
+	 * BEFORE the Lucee branch.
+	 */
+	public struct function $detectEngine(required struct serverScope) {
+		local.rv = {};
+		if (StructKeyExists(arguments.serverScope, "boxlang")) {
+			local.rv.serverName = "BoxLang";
+			local.rv.serverVersion = arguments.serverScope.boxlang.version;
+		} else if (
+			StructKeyExists(arguments.serverScope, "coldfusion")
+			&& StructKeyExists(arguments.serverScope.coldfusion, "productName")
+			&& arguments.serverScope.coldfusion.productName == "RustCFML"
+		) {
+			local.rv.serverName = "RustCFML";
+			local.rv.serverVersion = arguments.serverScope.coldfusion.productVersion;
+		} else if (
+			StructKeyExists(arguments.serverScope, "lucee")
+			&& StructKeyExists(arguments.serverScope.lucee, "versionName")
+			&& arguments.serverScope.lucee.versionName == "RustCFML"
+		) {
+			local.rv.serverName = "RustCFML";
+			// Strip the impersonated Lucee major ("7.0.519.0" -> "0.519.0").
+			local.rv.serverVersion = ListRest(arguments.serverScope.lucee.version, ".");
+		} else if (StructKeyExists(arguments.serverScope, "lucee")) {
+			local.rv.serverName = "Lucee";
+			local.rv.serverVersion = arguments.serverScope.lucee.version;
+		} else {
+			local.rv.serverName = "Adobe ColdFusion";
+			local.rv.serverVersion = arguments.serverScope.coldfusion.productVersion;
+		}
+		return local.rv;
+	}
+}

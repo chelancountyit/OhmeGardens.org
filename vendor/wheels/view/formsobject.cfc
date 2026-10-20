@@ -1,0 +1,1245 @@
+component {
+	/**
+	 * Builds and returns a string containing a text field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName The variable name of the object to build the form control for.
+	 * @property The name of the property to use in the form control.
+	 * @association The name of the association that the property is located on. Used for building nested forms that work with nested properties. If you are building a form with deep nesting, simply pass in a list to the nested object, and Wheels will figure it out.
+	 * @position The position used when referencing a hasMany relationship in the association argument. Used for building nested forms that work with nested properties. If you are building a form with deep nestings, simply pass in a list of positions, and Wheels will figure it out.
+	 * @label The label text to use in the form control.
+	 * @labelPlacement Whether to place the label before, after, or wrapped around the form control. Label text placement can be controlled using aroundLeft or aroundRight.
+	 * @prepend String to prepend to the form control. Useful to wrap the form control with HTML tags.
+	 * @append String to append to the form control. Useful to wrap the form control with HTML tags.
+	 * @prependToLabel String to prepend to the form control's label. Useful to wrap the form control with HTML tags.
+	 * @appendToLabel String to append to the form control's label. Useful to wrap the form control with HTML tags.
+	 * @errorElement HTML tag to wrap the form control with when the object contains errors.
+	 * @errorClass The class name of the HTML tag that wraps the form control when there are errors.
+	 * @includeErrorMessage When true, nest errorMessageOn() inside the field's error wrapper after the control. When omitted, the app-level includeFormErrorMessages setting is used (false unless the app opts in).
+	 * @type Input type attribute. Common examples in HTML5 and later are text (default), email, tel, and url.
+	 * @labelClass String added to the label's class.
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function textField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		string type = "text",
+		any encode
+	) {
+		$args(name = "textField", reserved = "name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a password field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function passwordField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "passwordField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "password";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing an email field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function emailField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "emailField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "email";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a URL field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function urlField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "urlField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "url";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a number field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @min Minimum allowed value.
+	 * @max Maximum allowed value.
+	 * @step Stepping interval.
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function numberField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string min,
+		string max,
+		string step,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "numberField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "number";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a telephone field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function telField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "telField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "tel";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a date field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @min Minimum allowed date (YYYY-MM-DD format).
+	 * @max Maximum allowed date (YYYY-MM-DD format).
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function dateField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string min,
+		string max,
+		string step,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "dateField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "date";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		// HTML5 <input type="date"> only displays a bare yyyy-mm-dd value; a date
+		// or datetime value carrying a time component (e.g. from a datetime column)
+		// renders as blank/invalid in the browser. Reduce a real date value to the
+		// date, leaving an already-bare yyyy-mm-dd or a non-date string untouched.
+		if (Len(arguments.value) && !ReFind("^\d{4}-\d{2}-\d{2}$", arguments.value) && IsDate(arguments.value)) {
+			arguments.value = DateFormat(arguments.value, "yyyy-mm-dd");
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a color picker form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function colorField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "colorField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "color";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a range slider form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @min Minimum allowed value.
+	 * @max Maximum allowed value.
+	 * @step Stepping interval.
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function rangeField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string min,
+		string max,
+		string step,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "rangeField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "range";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a search field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function searchField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "searchField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "search";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a hidden field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function hiddenField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		boolean encode
+	) {
+		$args(name = "hiddenField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		arguments.type = "hidden";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		if (!StructKeyExists(arguments, "value") || !Len(arguments.value)) {
+			arguments.value = $formValue(argumentCollection = arguments);
+		}
+		if (
+			application.wheels.obfuscateUrls
+			&& StructKeyExists(request.wheels, "currentFormMethod")
+			&& request.wheels.currentFormMethod == "get"
+		) {
+			arguments.value = obfuscateParam(arguments.value);
+		}
+		return $tag(
+			name = "input",
+			skip = "objectName,property,association,position,encode",
+			attributes = arguments,
+			encode = arguments.encode
+		);
+	}
+
+	/**
+	 * Builds and returns a string containing a file field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function fileField(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "fileField", reserved = "type,name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "file";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a text area field form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function textArea(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "textArea", reserved = "name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		local.maxLength = $maxLength(argumentCollection = arguments);
+		if (StructKeyExists(local, "maxLength")) {
+			arguments.maxLength = local.maxLength;
+		}
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		local.content = $formValue(argumentCollection = arguments);
+		return local.before & $element(
+			name = "textarea",
+			skip = "objectName,property,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			content = local.content,
+			attributes = arguments,
+			encode = arguments.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a radio button form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @tagValue The value of the radio button when selected.
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function radioButton(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string tagValue,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "radioButton", reserved = "type,name,value,checked", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		local.valueToAppend = LCase(Replace(ReReplaceNoCase(arguments.tagValue, "[^a-z0-9- ]", "", "all"), " ", "-", "all"));
+		$applyAutoId(
+			args = arguments,
+			objectName = arguments.objectName,
+			property = arguments.property,
+			valueToAppend = local.valueToAppend
+		);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "radio";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		arguments.value = arguments.tagValue;
+		if (arguments.tagValue == $formValue(argumentCollection = arguments)) {
+			arguments.checked = "checked";
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		return local.before & $tag(
+			name = "input",
+			skip = "objectName,property,tagValue,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Builds and returns a string containing a check box form control based on the supplied name.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @checkedValue Value of check box in its checked state.
+	 * @uncheckedValue The value of the check box when it's on the unchecked state.
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function checkBox(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		string checkedValue,
+		string uncheckedValue,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "checkBox", reserved = "type,name,value,checked", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.type = "checkbox";
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		arguments.value = arguments.checkedValue;
+		local.value = $formValue(argumentCollection = arguments);
+		// either the property value & checkedValue are equal or assume the checkedValue is a truthy value
+		if (
+			local.value == arguments.value
+			|| (!Len(arguments.checkedValue)
+				&& (
+					(IsNumeric(local.value) && local.value == 1)
+					|| (!IsNumeric(local.value) && IsBoolean(local.value) && local.value)
+				)
+			)
+		) {
+			arguments.checked = "checked";
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+		local.rv = local.before & $tag(
+			name = "input",
+			skip = "objectName,property,checkedValue,uncheckedValue,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			attributes = arguments,
+			encode = local.encode
+		);
+		if (Len(arguments.uncheckedValue)) {
+			local.hiddenAttributes = {};
+			local.hiddenAttributes.type = "hidden";
+			local.hiddenAttributes.id = arguments.id & "-checkbox";
+			local.hiddenAttributes.name = arguments.name & "($checkbox)";
+			local.hiddenAttributes.value = arguments.uncheckedValue;
+			// Mirror the main checkbox: only emit the data-auto-id companion when the primary
+			// checkbox did (i.e., when the id was auto-derived from an object-bound objectName).
+			if (StructKeyExists(arguments, "dataAutoId")) {
+				local.hiddenAttributes["dataAutoId"] = Replace(local.hiddenAttributes.id, "-", "_", "all");
+			}
+			local.rv &= $tag(name = "input", attributes = local.hiddenAttributes, encode = local.encode);
+		}
+		local.rv &= local.after;
+		return local.rv;
+	}
+
+	/**
+	 * Builds and returns a string containing a select form control based on the supplied objectName and property.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: Form Object Functions]
+	 *
+	 * @objectName [see:textField].
+	 * @property [see:textField].
+	 * @association [see:textField].
+	 * @position [see:textField].
+	 * @options A collection to populate the select form control with. Can be a query recordSet or an array of objects.
+	 * @includeBlank Whether to include a blank option in the select form control. Pass true to include a blank line or a string that should represent what display text should appear for the empty value (for example, "- Select One -").
+	 * @valueField The column or property to use for the value of each list element. Used only when a query or array of objects has been supplied in the options argument.  Required when specifying `textField`
+	 * @textField The column or property to use for the value of each list element that the end user will see. Used only when a query or array of objects has been supplied in the options argument. Required when specifying `valueField`
+	 * @multiple Whether to allow multiple options to be selected. Pass true to create a multi-select box.
+	 * @label [see:textField].
+	 * @labelPlacement [see:textField].
+	 * @prepend [see:textField].
+	 * @append [see:textField].
+	 * @prependToLabel [see:textField].
+	 * @appendToLabel [see:textField].
+	 * @errorElement [see:textField].
+	 * @errorClass [see:textField].
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function select(
+		required any objectName,
+		required string property,
+		string association,
+		string position,
+		any options,
+		any includeBlank,
+		string valueField,
+		string textField,
+		string label,
+		string labelPlacement,
+		string prepend,
+		string append,
+		string prependToLabel,
+		string appendToLabel,
+		string errorElement,
+		string errorClass,
+		any encode
+	) {
+		$args(name = "select", reserved = "name", args = arguments);
+		arguments.objectName = $objectName(argumentCollection = arguments);
+		$primeBoundObject(args = arguments);
+		$applyAutoId(args = arguments, objectName = arguments.objectName, property = arguments.property);
+		local.before = $formBeforeElement(argumentCollection = arguments);
+		local.after = $formAfterElement(argumentCollection = arguments);
+		arguments.name = $tagName(arguments.objectName, arguments.property);
+		if (StructKeyExists(arguments, "multiple") && IsBoolean(arguments.multiple)) {
+			if (arguments.multiple) {
+				arguments.multiple = "multiple";
+			} else {
+				StructDelete(arguments, "multiple");
+			}
+		}
+		local.content = $optionsForSelect(argumentCollection = arguments);
+		if (!IsBoolean(arguments.includeBlank) || arguments.includeBlank) {
+			if (!IsBoolean(arguments.includeBlank)) {
+				local.blankOptionText = arguments.includeBlank;
+			} else {
+				local.blankOptionText = "";
+			}
+			local.blankOptionAttributes = {value = ""};
+			local.content = $element(
+				name = "option",
+				content = local.blankOptionText,
+				attributes = local.blankOptionAttributes,
+				encode = arguments.encode
+			) & local.content;
+		}
+		local.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : "attributes";
+		return local.before & $element(
+			name = "select",
+			skip = "objectName,property,options,includeBlank,valueField,textField,label,labelPlacement,prepend,append,prependToLabel,appendToLabel,errorElement,errorClass,association,position,encode",
+			skipStartingWith = "label",
+			content = local.content,
+			attributes = arguments,
+			encode = local.encode
+		) & local.after;
+	}
+
+	/**
+	 * Creates multiple HTML "option" elements.
+	 */
+	public string function $optionsForSelect(
+		required any options,
+		required string valueField,
+		required string textField,
+		required any encode
+	) {
+		local.value = $formValue(argumentCollection = arguments);
+		// Only multi-selects should treat the bound value as a list when deciding which option(s)
+		// are selected; single selects must use exact comparison (a bound value like "Doe,John"
+		// must not mark a "Doe" option selected). The `multiple` key is only present on the
+		// argument struct when the select is a multi-select (see the normalization in select()).
+		local.multiple = StructKeyExists(arguments, "multiple") && (!IsBoolean(arguments.multiple) || arguments.multiple);
+		local.rv = "";
+		if (IsQuery(arguments.options)) {
+			local.cols = $optionsForSelectColumns(arguments.options, arguments.valueField, arguments.textField);
+			arguments.valueField = local.cols.valueField;
+			arguments.textField = local.cols.textField;
+			local.iEnd = arguments.options.RecordCount;
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				local.rv &= $option(
+					objectValue = local.value,
+					optionValue = arguments.options[arguments.valueField][local.i],
+					optionText = arguments.options[arguments.textField][local.i],
+					encode = arguments.encode,
+					multiple = local.multiple
+				);
+			}
+		} else if (IsStruct(arguments.options)) {
+			// Sort struct keys alphabetically.
+			local.sortedKeys = ListSort(StructKeyList(arguments.options), "textnocase");
+			local.sortedKeysArray = ListToArray(local.sortedKeys);
+			local.iEnd = ArrayLen(local.sortedKeysArray);
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				local.key = local.sortedKeysArray[local.i];
+				local.rv &= $option(
+					objectValue = local.value,
+					optionValue = LCase(local.key),
+					optionText = arguments.options[local.key],
+					encode = arguments.encode,
+					multiple = local.multiple
+				);
+			}
+		} else {
+			// Convert the options to an array so we don't duplicate logic.
+			if (IsSimpleValue(arguments.options)) {
+				arguments.options = ListToArray(arguments.options);
+			}
+			local.iEnd = ArrayLen(arguments.options);
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				local.cell = $optionsForSelectCell(arguments.options[local.i], arguments.valueField, arguments.textField);
+				arguments.valueField = local.cell.valueField;
+				arguments.textField = local.cell.textField;
+				local.rv &= $option(
+					objectValue = local.value,
+					optionValue = local.cell.optionValue,
+					optionText = local.cell.optionText,
+					encode = arguments.encode,
+					multiple = local.multiple
+				);
+			}
+		}
+		return local.rv;
+	}
+
+	/**
+	 * Resolve the value/text columns for a query passed to $optionsForSelect:
+	 * infer them from the first numeric and first non-numeric column when they
+	 * aren't provided.
+	 */
+	public struct function $optionsForSelectColumns(
+		required any options,
+		required string valueField,
+		required string textField
+	) {
+		if (!Len(arguments.valueField) || !Len(arguments.textField)) {
+			// order the columns according to their ordinal position in the database table
+			local.columns = "";
+			local.info = GetMetadata(arguments.options);
+			local.iEnd = ArrayLen(local.info);
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				local.columns = ListAppend(local.columns, local.info[local.i].name);
+			}
+			if (!Len(local.columns)) {
+				arguments.valueField = "";
+				arguments.textField = "";
+			} else if (ListLen(local.columns) == 1) {
+				arguments.valueField = ListGetAt(local.columns, 1);
+				arguments.textField = ListGetAt(local.columns, 1);
+			} else {
+				// take the first numeric field in the query as the value field and the first non numeric as the text field
+				local.columnsArray = ListToArray(local.columns);
+				local.iEnd = arguments.options.RecordCount;
+				local.jEnd = ArrayLen(local.columnsArray);
+				for (local.i = 1; local.i <= local.iEnd; local.i++) {
+					for (local.j = 1; local.j <= local.jEnd; local.j++) {
+						if (!Len(arguments.valueField) && IsNumeric(arguments.options[local.columnsArray[local.j]][local.i])) {
+							arguments.valueField = local.columnsArray[local.j];
+						}
+						if (!Len(arguments.textField) && !IsNumeric(arguments.options[local.columnsArray[local.j]][local.i])) {
+							arguments.textField = local.columnsArray[local.j];
+						}
+					}
+					// stop scanning rows as soon as both fields have been inferred
+					if (Len(arguments.valueField) && Len(arguments.textField)) {
+						break;
+					}
+				}
+				if (!Len(arguments.valueField) || !Len(arguments.textField)) {
+					// the query does not contain both a numeric and a text column so we'll just use the first and second column instead
+					arguments.valueField = ListGetAt(local.columns, 1);
+					arguments.textField = ListGetAt(local.columns, 2);
+				}
+			}
+		}
+		return {valueField = arguments.valueField, textField = arguments.textField};
+	}
+
+	/**
+	 * Resolve the option value/text for a single array cell passed to
+	 * $optionsForSelect (simple value, [value,text] pair, {value,text} struct,
+	 * object, or single-key struct). Returns the resolved fields plus any
+	 * valueField/textField inferred while inspecting an object cell.
+	 */
+	public struct function $optionsForSelectCell(
+		required any cell,
+		required string valueField,
+		required string textField
+	) {
+		local.optionValue = "";
+		local.optionText = "";
+		if (IsSimpleValue(arguments.cell)) {
+			local.optionValue = arguments.cell;
+			local.optionText = humanize(arguments.cell);
+		} else if (IsArray(arguments.cell) && ArrayLen(arguments.cell) >= 2) {
+			local.optionValue = arguments.cell[1];
+			local.optionText = arguments.cell[2];
+		} else if (
+			IsStruct(arguments.cell)
+			&& StructKeyExists(arguments.cell, "value")
+			&& StructKeyExists(arguments.cell, "text")
+		) {
+			local.optionValue = arguments.cell["value"];
+			local.optionText = arguments.cell["text"];
+		} else if (IsObject(arguments.cell)) {
+			local.object = arguments.cell;
+			if (!Len(arguments.valueField) || !Len(arguments.textField)) {
+				local.propertyNames = local.object.propertyNames();
+				local.propertyNamesArray = ListToArray(local.propertyNames);
+				local.jEnd = ArrayLen(local.propertyNamesArray);
+				for (local.j = 1; local.j <= local.jEnd; local.j++) {
+					local.propertyName = local.propertyNamesArray[local.j];
+					if (StructKeyExists(local.object, local.propertyName)) {
+						local.propertyValue = local.object[local.propertyName];
+						if (!Len(arguments.valueField) && IsNumeric(local.propertyValue)) {
+							arguments.valueField = local.propertyName;
+						}
+						if (!Len(arguments.textField) && !IsNumeric(local.propertyValue)) {
+							arguments.textField = local.propertyName;
+						}
+					}
+				}
+			}
+			if (StructKeyExists(local.object, arguments.valueField)) {
+				local.optionValue = local.object[arguments.valueField];
+			}
+			if (StructKeyExists(local.object, arguments.textField)) {
+				local.optionText = local.object[arguments.textField];
+			}
+		} else if (IsStruct(arguments.cell)) {
+			local.object = arguments.cell;
+			if (StructCount(local.object) == 1) {
+				// When the struct only has one element then use the key / value pair.
+				local.key = StructKeyList(local.object);
+				local.optionValue = LCase(local.key);
+				local.optionText = local.object[local.key];
+			} else {
+				if (StructKeyExists(local.object, arguments.valueField)) {
+					local.optionValue = local.object[arguments.valueField];
+				}
+				if (StructKeyExists(local.object, arguments.textField)) {
+					local.optionText = local.object[arguments.textField];
+				}
+			}
+		}
+		return {
+			optionValue = local.optionValue,
+			optionText = local.optionText,
+			valueField = arguments.valueField,
+			textField = arguments.textField
+		};
+	}
+
+	/**
+	 * Creates an HTML "option" element.
+	 */
+	public string function $option(
+		required string objectValue,
+		required string optionValue,
+		required string optionText,
+		required any encode,
+		boolean multiple = false
+	) {
+		local.optionAttributes = {value = arguments.optionValue};
+		// Only treat the bound value as a list of selected values for multi-selects.
+		// Single selects use exact comparison so a bound value containing a comma
+		// (e.g. "Doe,John") does not mark its comma-segment options as selected.
+		if (
+			arguments.optionValue == arguments.objectValue
+			|| (arguments.multiple && ListFindNoCase(arguments.objectValue, arguments.optionValue))
+		) {
+			local.optionAttributes.selected = "selected";
+		}
+		if (
+			application.wheels.obfuscateUrls
+			&& StructKeyExists(request.wheels, "currentFormMethod")
+			&& request.wheels.currentFormMethod == "get"
+		) {
+			local.optionAttributes.value = obfuscateParam(local.optionAttributes.value);
+		}
+		return $element(
+			name = "option",
+			content = arguments.optionText,
+			attributes = local.optionAttributes,
+			encode = arguments.encode
+		);
+	}
+}

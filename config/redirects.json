@@ -1,0 +1,37 @@
+{
+  "redirects": [
+    { "from": "/index.html", "to": "/", "status": 301 },
+    { "from": "/default.asp", "to": "/", "status": 301 },
+    { "from": "/default.aspx", "to": "/", "status": 301 },
+    { "from": "/garden", "to": "/thegardens", "status": 301 },
+    { "from": "/gardens", "to": "/thegardens", "status": 301 },
+    { "from": "/history", "to": "/thegardens/pages/the-history-of-ohme-gardens", "status": 301 },
+    { "from": "/about", "to": "/thegardens/pages/about-us", "status": 301 },
+    { "from": "/map", "to": "/thegardens/pages/map-of-the-gardens", "status": 301 },
+    { "from": "/visit", "to": "/planyourvisit", "status": 301 },
+    { "from": "/hours", "to": "/planyourvisit/pages/hours-and-admission", "status": 301 },
+    { "from": "/admission", "to": "/planyourvisit/pages/hours-and-admission", "status": 301 },
+    { "from": "/rates", "to": "/planyourvisit/pages/hours-and-admission", "status": 301 },
+    { "from": "/membership", "to": "/planyourvisit/pages/gardens-membership", "status": 301 },
+    { "from": "/memberships", "to": "/planyourvisit/pages/gardens-membership", "status": 301 },
+    { "from": "/directions", "to": "/planyourvisit/pages/driving-directions", "status": 301 },
+    { "from": "/event", "to": "/events", "status": 301 },
+    { "from": "/specialevents", "to": "/planyourspecialevent", "status": 301 },
+    { "from": "/wedding", "to": "/planyourspecialevent/pages/weddings", "status": 301 },
+    { "from": "/weddings", "to": "/planyourspecialevent/pages/weddings", "status": 301 },
+    { "from": "/faq", "to": "/planyourspecialevent/frequently-asked-questions", "status": 301 },
+    { "from": "/faqs", "to": "/planyourspecialevent/frequently-asked-questions", "status": 301 },
+    { "from": "/volunteer", "to": "/getinvolved", "status": 301 },
+    { "from": "/donate", "to": "/getinvolved/pages/donate", "status": 301 },
+    { "from": "/support", "to": "/getinvolved", "status": 301 },
+    { "from": "/bench", "to": "/getinvolved/pages/adopt-a-bench", "status": 301 },
+    { "from": "/contact", "to": "/contacts", "status": 301 },
+    { "from": "/privacy", "to": "/legal", "status": 301 },
+    { "from": "/terms", "to": "/legal", "status": 301 },
+    { "from": "/livecam", "to": "/thegardens/camera", "status": 301 },
+    { "from": "/webcam", "to": "/thegardens/camera", "status": 301 },
+    { "from": "/photos", "to": "/thegardens/photo-gallery", "status": 301 },
+    { "from": "/gallery", "to": "/thegardens/photo-gallery", "status": 301 }
+  ]
+}
+

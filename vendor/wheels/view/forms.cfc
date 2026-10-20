@@ -1,0 +1,605 @@
+component {
+	/**
+	 * Builds and returns a string containing the closing `form` tag.
+	 *
+	 * [section: View Helpers]
+	 * [category: General Form Functions]
+	 *
+	 * @prepend [see:textField]
+	 * @append [see:textField],
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function endFormTag(string prepend, string append, any encode) {
+		$args(name = "endFormTag", args = arguments);
+
+		// Encode all prepend / append type arguments if specified.
+		$encodeArgsForHtml(args = arguments, keys = "prepend,append");
+
+		if (StructKeyExists(request.wheels, "currentFormMethod")) {
+			StructDelete(request.wheels, "currentFormMethod");
+		}
+		return arguments.prepend & "</form>" & arguments.append;
+	}
+
+	/**
+	 * Builds and returns a string containing the opening `form` tag.
+	 * The form's action will be built according to the same rules as `URLFor`.
+	 * Note: Pass any additional arguments like `class`, `rel`, and `id`, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: General Form Functions]
+	 *
+	 * @method The type of `method` to use in the `form` tag (`delete`, `get`, `patch`, `post`, and `put` are the options).
+	 * @multipart Set to `true` if the form should be able to upload files.
+	 * @route Name of a route that you have configured in `config/routes.cfm`.
+	 * @controller Name of the controller to include in the URL.
+	 * @action Name of the action to include in the URL.
+	 * @key Key(s) to include in the URL.
+	 * @params Any additional parameters to be set in the query string (example: wheels=cool&x=y). Please note that Wheels uses the & and = characters to split the parameters and encode them properly for you. However, if you need to pass in & or = as part of the value, then you need to encode them (and only them), example: a=cats%26dogs%3Dtrouble!&b=1.
+	 * @anchor Sets an anchor name to be appended to the path.
+	 * @onlyPath If true, returns only the relative URL (no protocol, host name or port).
+	 * @host Set this to override the current host.
+	 * @protocol Set this to override the current protocol.
+	 * @port Set this to override the current port number.
+	 * @prepend String to prepend to the form control. Useful to wrap the form control with HTML tags.
+	 * @append String to append to the form control. Useful to wrap the form control with HTML tags.
+	 * @encode [see:styleSheetLinkTag].
+	 * @authenticityToken Set to `false` to leave out the hidden authenticity token field. Do this for every form in cached markup that other visitors receive, so the cache never holds a session's token. Supply the token at request time instead: the `X-CSRF-Token` header (Turbo sends it from `csrfMetaTags()`; a `fetch()` must set it), or a script that copies the `csrf-token` meta tag into the form on submit.
+	 */
+	public string function startFormTag(
+		string method,
+		boolean multipart,
+		string route = "",
+		string controller = "",
+		string action = "",
+		any key = "",
+		string params = "",
+		string anchor = "",
+		boolean onlyPath,
+		string host,
+		string protocol,
+		numeric port,
+		string prepend,
+		string append,
+		any encode,
+		boolean authenticityToken = true
+	) {
+		$args(name = "startFormTag", args = arguments);
+		// authenticityToken = false leaves the hidden token field out (#3959). Use it for
+		// every form in cached markup that other visitors receive: a stored field would
+		// hand them the token of the session that warmed the cache. The token then comes
+		// at request time, in the X-CSRF-Token header (Turbo sends it from
+		// csrfMetaTags(); a fetch() must set it) or via a script that copies the meta tag
+		// into the form on submit. Removed from arguments so it never reaches URLFor()
+		// or the element's attributes.
+		local.includeToken = arguments.authenticityToken;
+		StructDelete(arguments, "authenticityToken");
+
+		// Encode all prepend / append type arguments if specified.
+		$encodeArgsForHtml(args = arguments, keys = "prepend,append");
+		arguments.encode = $coerceEncode(arguments.encode, true);
+
+		// sets a flag to indicate whether we use get or post on this form, used when obfuscating params
+		request.wheels.currentFormMethod = arguments.method;
+
+		// Resolve the route and method (mutating arguments.route / arguments.method) and remember
+		// the original verb for the `_method` hidden field (empty string when none applies).
+		local.method = $startFormTagMethod(args = arguments);
+
+		// HTML forms only support get/post, but the named-route lookup must use
+		// the ORIGINAL verb (put/patch/delete) — resource member routes never
+		// declare `post` (#3517). Remember the HTML verb and restore it after
+		// the route is resolved.
+		local.formMethod = arguments.method;
+		if (Len(local.method)) {
+			arguments.method = local.method;
+		}
+
+		// set the form's action attribute to the URL that we want to send to
+		local.encodeExcept = "";
+		local.skipCsrf = false;
+		if (ReFindNoCase("^https?:\/\/", arguments.action)) {
+			// Absolute http(s) action: do not leak the authenticity token to
+			// another origin (S4). Same-host absolute URLs still get the field.
+			local.serverName = StructKeyExists(request, "cgi") && StructKeyExists(request.cgi, "server_name")
+				? request.cgi.server_name
+				: "";
+			local.skipCsrf = !Len(local.serverName) || !$isSafeRedirectUrl(
+				url = arguments.action,
+				serverName = local.serverName
+			);
+		} else {
+			arguments.$encodeForHtmlAttribute = true;
+			arguments.action = uRLFor(argumentCollection = arguments);
+			local.encodeExcept = "action";
+		}
+
+		// set the form to be able to handle file uploads
+		if (!StructKeyExists(arguments, "enctype") && arguments.multipart) {
+			arguments.enctype = "multipart/form-data";
+		}
+
+		local.skip = "multipart,route,controller,key,params,anchor,onlyPath,host,protocol,port,prepend,append,encode";
+
+		// variables passed in as route arguments should not be added to the html element
+		if (Len(arguments.route)) {
+			local.skip = ListAppend(local.skip, $routeVariables(argumentCollection = arguments));
+		}
+
+		// need to re-add action here even if it was removed due to being a route variable above
+		if (ListFind(local.skip, "action")) {
+			local.skip = ListDeleteAt(local.skip, ListFind(local.skip, "action"));
+		}
+
+		// Restore the HTML verb before rendering <form method="...">.
+		arguments.method = local.formMethod;
+
+		local.rv = arguments.prepend & $tag(
+			name = "form",
+			skip = local.skip,
+			attributes = arguments,
+			encode = arguments.encode,
+			encodeExcept = local.encodeExcept
+		) & arguments.append;
+		if (
+			$isRequestProtectedFromForgery()
+			&& ListFindNoCase("post,put,patch,delete", arguments.method)
+			&& !local.skipCsrf
+			&& local.includeToken
+		) {
+			local.rv &= authenticityTokenField();
+		}
+		if (Len(local.method) && local.method != "get") {
+			local.methodField = hiddenFieldTag(name = "_method", value = local.method);
+			// Delete the id="_method" part of the string.
+			// There could be multiple forms on a page and duplicate "id" attributes are not allowed in HTML.
+			local.methodField = Replace(local.methodField, ' id="_method" ', " ");
+			local.rv &= local.methodField;
+		}
+		return local.rv;
+	}
+
+	/**
+	 * Internal function. Resolves the route and method for startFormTag: finds a named route
+	 * matching controller/action/method, verifies the route's method, and rewrites non-get/post
+	 * verbs to `post` while remembering the original verb for the `_method` hidden field.
+	 * Mutates `args.route` and `args.method` in place and returns the original verb (empty string
+	 * when none applies).
+	 */
+	public string function $startFormTagMethod(required struct args) {
+		local.routeAndMethodMatch = false;
+
+		// Check to see if a route exists if not specified.
+		// The linear scan over all routes is memoized per request (mirroring URLFor's `urlForCache`).
+		// Only successful lookups are cached, and a cached route name is re-validated against the
+		// current route table so route changes within a request (e.g. the test suite) stay correct.
+		if (!Len(args.route) && Len(args.controller) && Len(args.action) && Len(args.method)) {
+			if (!StructKeyExists(request.wheels, "startFormTagRouteCache")) {
+				request.wheels.startFormTagRouteCache = {};
+			}
+			local.routeCache = request.wheels.startFormTagRouteCache;
+			local.routeCacheKey = args.controller & "##" & args.action & "##" & args.method;
+			if (
+				StructKeyExists(local.routeCache, local.routeCacheKey)
+				&& StructKeyExists(application.wheels.namedRoutePositions, local.routeCache[local.routeCacheKey])
+			) {
+				args.route = local.routeCache[local.routeCacheKey];
+				local.routeAndMethodMatch = true;
+			} else {
+				for (local.route in application.wheels.routes) {
+					if (
+						StructKeyExists(local.route, "controller")
+						&& local.route.controller == args.controller
+						&& StructKeyExists(local.route, "action")
+						&& local.route.action == args.action
+						&& ListFindNoCase(local.route.methods, args.method)
+					) {
+						args.route = local.route.name;
+						local.routeAndMethodMatch = true;
+						local.routeCache[local.routeCacheKey] = local.route.name;
+						break;
+					}
+				}
+			}
+		}
+
+		// if we have a route and method, tap
+		if (Len(args.route) && StructKeyExists(args, "method")) {
+			// Throw error if no route was found.
+			if (!StructKeyExists(application.wheels.namedRoutePositions, args.route)) {
+				$throwErrorOrShow404Page(
+					type = "Wheels.RouteNotFound",
+					message = "Could not find the `#args.route#` route.",
+					extendedInfo = "Make sure there is a route configured in your `config/routes.cfm` file named `#args.route#`."
+				);
+			}
+
+			// check to see if the route specified has a method to match the one passed in
+			if (!local.routeAndMethodMatch) {
+				for (local.position in ListToArray(application.wheels.namedRoutePositions[args.route])) {
+					if (
+						StructKeyExists(application.wheels.routes[local.position], "methods")
+						&& ListFindNoCase(application.wheels.routes[local.position].methods, args.method)
+					) {
+						local.routeAndMethodMatch = true;
+					}
+				}
+			}
+
+			if (local.routeAndMethodMatch) {
+				// save the method passed in
+				local.method = args.method;
+
+				if (args.method != "get") {
+					args.method = "post";
+				}
+				return local.method;
+			}
+		}
+
+		// HTML forms only support the `get` and `post` verbs. When the route / verb match above did
+		// not run (or did not match), other verbs (`put`, `patch`, `delete`) were previously rendered
+		// verbatim, causing browsers to silently fall back to a `get` submission - leaking the
+		// authenticity token into the URL and bypassing non-GET CSRF verification. Always rewrite
+		// them to `post` plus a `_method` hidden field instead.
+		if (Len(args.method) && !ListFindNoCase("get,post", args.method)) {
+			local.method = args.method;
+			args.method = "post";
+			return local.method;
+		}
+		return "";
+	}
+
+	/**
+	 * Builds and returns a string containing a submit button form control.
+	 * Note: Pass any additional arguments like class, rel, and id, and the generated tag will also include those values as HTML attributes.
+	 *
+	 * [section: View Helpers]
+	 * [category: General Form Functions]
+	 *
+	 * @value Message to display in the button form control.
+	 * @image File name of the image file to use in the button form control.
+	 * @prepend [see:textField]
+	 * @append [see:textField]
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function submitTag(string value, string image, string prepend, string append, any encode) {
+		$args(name = "submitTag", reserved = "type,src", args = arguments);
+
+		// Encode all prepend / append type arguments if specified.
+		$encodeArgsForHtml(args = arguments, keys = "prepend,append");
+		arguments.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+
+		local.rv = arguments.prepend;
+		local.append = arguments.append;
+		if (Len(arguments.image)) {
+			// create an img tag and then just replace "img" with "input"
+			arguments.type = "image";
+			arguments.source = arguments.image;
+			StructDelete(arguments, "value");
+			StructDelete(arguments, "image");
+			StructDelete(arguments, "append");
+			StructDelete(arguments, "prepend");
+			local.rv &= imageTag(argumentCollection = arguments);
+			local.rv = Replace(local.rv, "<img", "<input");
+		} else {
+			arguments.type = "submit";
+			local.rv &= $tag(
+				name = "input",
+				skip = "image,append,prepend,encode",
+				attributes = arguments,
+				encode = arguments.encode
+			);
+		}
+		local.rv &= local.append;
+		return local.rv;
+	}
+
+	/**
+	 * Builds and returns a string containing a button form control.
+	 *
+	 * [section: View Helpers]
+	 * [category: General Form Functions]
+	 *
+	 * @content Content to display inside the button.
+	 * @type The type for the button: `button`, `reset`, or `submit`.
+	 * @value The value of the button when submitted.
+	 * @image File name of the image file to use in the button form control.
+	 * @prepend [see:textField]
+	 * @append [see:textField]
+	 * @encode [see:styleSheetLinkTag].
+	 */
+	public string function buttonTag(
+		string content,
+		string type,
+		string value,
+		string image,
+		string prepend,
+		string append,
+		any encode
+	) {
+		$args(name = "buttonTag", args = arguments);
+
+		// Encode all prepend / append type arguments if specified.
+		$encodeArgsForHtml(args = arguments, keys = "prepend,append");
+
+		// if image is specified then use that as the content
+		if (Len(arguments.image)) {
+			local.args = {};
+			local.args.type = "image";
+			local.args.source = arguments.image;
+			local.args.encode = IsBoolean(arguments.encode) && !arguments.encode ? false : true;
+			arguments.content = imageTag(argumentCollection = local.args);
+			arguments.encode = arguments.encode ? "attributes" : false;
+		}
+
+		// save necessary info from arguments and delete afterwards
+		local.content = arguments.content;
+		local.prepend = arguments.prepend;
+		local.append = arguments.append;
+		local.encode = arguments.encode;
+		StructDelete(arguments, "content");
+		StructDelete(arguments, "image");
+		StructDelete(arguments, "prepend");
+		StructDelete(arguments, "append");
+		StructDelete(arguments, "encode");
+
+		// create the button
+		return local.prepend & $element(
+			name = "button",
+			content = local.content,
+			attributes = arguments,
+			encode = local.encode
+		) & local.append;
+	}
+
+	/**
+	 * Internal function. Resolves the object a form helper is bound to once and stashes it on the
+	 * helper's argument struct (passed by reference) so the shared internals ($formValue,
+	 * $maxLength, $formHasError, $getFieldLabel) reuse it instead of each re-resolving it via
+	 * $getObject. The `$`-prefixed key is automatically excluded from rendered HTML attributes
+	 * by $tag() / $element().
+	 */
+	public void function $primeBoundObject(required struct args) {
+		if (
+			IsSimpleValue(arguments.args.objectName)
+			&& Len(arguments.args.objectName)
+			&& !StructKeyExists(arguments.args, "$boundObject")
+		) {
+			local.object = $getObject(arguments.args.objectName);
+			if (IsObject(local.object)) {
+				arguments.args["$boundObject"] = local.object;
+			}
+		}
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $formValue(required any objectName, required string property) {
+		if (IsStruct(arguments.objectName)) {
+			local.rv = arguments.objectName[arguments.property];
+		} else {
+			local.object = StructKeyExists(arguments, "$boundObject") ? arguments.$boundObject : $getObject(arguments.objectName);
+			if ($get("showErrorInformation") && !IsObject(local.object)) {
+				Throw(type = "Wheels.IncorrectArguments", message = "The `#arguments.objectName#` variable is not an object.");
+			}
+			if (StructKeyExists(local.object, arguments.property)) {
+				local.rv = local.object[arguments.property];
+			} else {
+				local.rv = "";
+			}
+		}
+		
+		// Handle Oracle TIMESTAMP objects in BoxLang by converting to string
+		if (IsObject(local.rv) && GetMetadata(local.rv).getName() == "oracle.sql.TIMESTAMP") {
+			local.rv = ToString(local.rv);
+		}
+		
+		return local.rv;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public any function $maxLength(required any objectName, required string property) {
+		if (StructKeyExists(arguments, "maxlength")) {
+			local.rv = arguments.maxlength;
+		} else if (!IsStruct(arguments.objectName)) {
+			local.object = StructKeyExists(arguments, "$boundObject") ? arguments.$boundObject : $getObject(arguments.objectName);
+			if (IsObject(local.object)) {
+				local.propertyInfo = local.object.$propertyInfo(arguments.property);
+				if (StructCount(local.propertyInfo) && ListFindNoCase("cf_sql_char,cf_sql_varchar", local.propertyInfo.type)) {
+					local.rv = local.propertyInfo.size;
+				}
+			}
+		}
+		if (StructKeyExists(local, "rv")) {
+			return local.rv;
+		}
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public boolean function $formHasError(required any objectName, required string property) {
+		local.rv = false;
+		if (!IsStruct(arguments.objectName)) {
+			local.object = StructKeyExists(arguments, "$boundObject") ? arguments.$boundObject : $getObject(arguments.objectName);
+			if ($get("showErrorInformation") && !IsObject(local.object)) {
+				Throw(type = "Wheels.IncorrectArguments", message = "The `#arguments.objectName#` variable is not an object.");
+			}
+			if (ArrayLen(local.object.errorsOn(arguments.property))) {
+				local.rv = true;
+			}
+		}
+		return local.rv;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $createLabel(
+		required any objectName,
+		required string property,
+		required string label,
+		required string prependToLabel,
+		any encode = false
+	) {
+		local.rv = arguments.prependToLabel;
+		local.attributes = {};
+		for (local.key in arguments) {
+			if (CompareNoCase(Left(local.key, 5), "label") == 0 && Len(local.key) > 5 && local.key != "labelPlacement") {
+				local.attributes[ReplaceNoCase(local.key, "label", "")] = arguments[local.key];
+			}
+		}
+		if (StructKeyExists(arguments, "id")) {
+			local.attributes.for = arguments.id;
+		}
+		local.rv &= $element(
+			name = "label",
+			content = arguments.label,
+			attributes = local.attributes,
+			encode = arguments.encode
+		);
+		return local.rv;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $formBeforeElement(
+		required any objectName,
+		required string property,
+		required any label,
+		required string labelPlacement,
+		required string prepend,
+		required string append,
+		required string prependToLabel,
+		required string appendToLabel,
+		required string errorElement,
+		required string errorClass,
+		any encode = false
+	) {
+		// Encode all prepend type arguments if specified.
+		$encodeArgsForHtml(args = arguments, keys = "prepend,prependToLabel");
+
+		local.rv = "";
+		arguments.label = $getFieldLabel(argumentCollection = arguments);
+		if ($formHasError(argumentCollection = arguments) && Len(arguments.errorElement)) {
+			arguments.errorElement = $sanitizeHtmlTagName(arguments.errorElement);
+			// the input has an error and should be wrapped in a tag so we need to start that wrapper tag
+			local.encode = $coerceEncode(arguments.encode, true);
+			local.rv &= $tag(name = arguments.errorElement, class = arguments.errorClass, encode = local.encode);
+		}
+		if (Len(arguments.label) && arguments.labelPlacement != "after") {
+			local.rv &= $createLabel(argumentCollection = arguments);
+			if (arguments.labelPlacement == "aroundRight") {
+				// Strip out both the label text and closing label tag since it will be placed after the form input.
+				// Needs to be done for both encoded and normal content.
+				local.rv = Replace(local.rv, EncodeForHTML($canonicalize(arguments.label)) & "</label>", "");
+				local.rv = Replace(local.rv, arguments.label & "</label>", "");
+			} else if (arguments.labelPlacement == "before") {
+				// since the entire label is created we can append to it
+				local.rv &= arguments.appendToLabel;
+			} else {
+				// the label argument is either "around" or "aroundLeft" so we only have to strip out the closing label tag
+				local.rv = Replace(local.rv, "</label>", "");
+			}
+		}
+		local.rv &= arguments.prepend;
+		return local.rv;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $formAfterElement(
+		required any objectName,
+		required string property,
+		required string label,
+		required string labelPlacement,
+		required string prepend,
+		required string append,
+		required string prependToLabel,
+		required string appendToLabel,
+		required string errorElement,
+		any encode = false
+	) {
+		// Encode all append type arguments if specified.
+		$encodeArgsForHtml(args = arguments, keys = "append,appendToLabel");
+
+		local.rv = arguments.append;
+		arguments.label = $getFieldLabel(argumentCollection = arguments);
+		if (Len(arguments.label) && arguments.labelPlacement != "before") {
+			if (arguments.labelPlacement == "after") {
+				// if the label should be placed after the tag we return the entire label tag
+				local.rv &= $createLabel(argumentCollection = arguments);
+			} else if (arguments.labelPlacement == "aroundRight") {
+				// Match $createLabel / $element: encode label text when encode=true.
+				// aroundRight used to concat arguments.label raw, so XSS labels
+				// skipped the encode=true path that around / aroundLeft / after use.
+				local.labelText = arguments.label;
+				if (IsBoolean(arguments.encode) && arguments.encode && $get("encodeHtmlTags")) {
+					local.labelText = EncodeForHTML($canonicalize(arguments.label));
+				}
+				local.rv &= local.labelText & "</label>";
+			} else {
+				// the label argument is either "around" or "aroundLeft" so we only have to return the closing label tag
+				local.rv &= "</label>";
+			}
+			local.rv &= arguments.appendToLabel;
+		}
+		if ($includeFormErrorMessage(argumentCollection = arguments) && $formHasError(argumentCollection = arguments)) {
+			// Nest the per-field message inside the error wrapper, after the
+			// control (and after around-placement's closing label). Prefix is
+			// a non-color cue; CSS adds an icon + red (#3549, #3550).
+			local.errorArgs = {
+				objectName = arguments.objectName,
+				property = arguments.property,
+				prependText = "Error:"
+			};
+			if (StructKeyExists(arguments, "encode")) {
+				local.errorArgs.encode = arguments.encode;
+			}
+			local.rv &= errorMessageOn(argumentCollection = local.errorArgs);
+		}
+		if ($formHasError(argumentCollection = arguments) && Len(arguments.errorElement)) {
+			arguments.errorElement = $sanitizeHtmlTagName(arguments.errorElement);
+			// the input has an error and is wrapped in a tag so we need to close that wrapper tag
+			local.rv &= "</" & arguments.errorElement & ">";
+		}
+		return local.rv;
+	}
+
+	/**
+	 * Whether this field helper should emit errorMessageOn() inside its error wrapper.
+	 * Per-call `includeErrorMessage` wins; otherwise the app-level setting
+	 * `includeFormErrorMessages` (default false) is used.
+	 */
+	public boolean function $includeFormErrorMessage() {
+		if (StructKeyExists(arguments, "includeErrorMessage") && IsBoolean(arguments.includeErrorMessage)) {
+			return arguments.includeErrorMessage;
+		}
+		return $get("includeFormErrorMessages");
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $getFieldLabel(required any objectName, required string property, required string label) {
+		local.object = false;
+		if (Compare("false", arguments.label) == 0) {
+			local.rv = "";
+		} else if (arguments.label == "useDefaultLabel" && !IsStruct(arguments.objectName)) {
+			local.object = StructKeyExists(arguments, "$boundObject") ? arguments.$boundObject : $getObject(arguments.objectName);
+			if (IsObject(local.object)) {
+				local.rv = local.object.$label(arguments.property);
+			}
+		}
+		if (!StructKeyExists(local, "rv")) {
+			local.rv = arguments.label;
+		}
+		return local.rv;
+	}
+}

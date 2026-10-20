@@ -1,0 +1,323 @@
+component {
+	/**
+	 * Returns the value of a specific key in the Flash (or the entire Flash as a struct if no key is passed in).
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 *
+	 * @key The key to get the value for.
+	 */
+	public any function flash(string key) {
+		local.flash = $readFlash();
+		if (StructKeyExists(arguments, "key")) {
+			if (flashKeyExists(key = arguments.key)) {
+				local.flash = local.flash[arguments.key];
+			} else {
+				local.flash = "";
+			}
+		}
+
+		// We can just return the flash since it is created at the beginning of the request.
+		// This way we always return what is expected - a struct.
+		return local.flash;
+	}
+
+	/**
+	 * Deletes everything from the Flash.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 */
+	public void function flashClear() {
+		$writeFlash();
+	}
+
+	/**
+	 * Returns how many keys exist in the Flash.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 */
+	public numeric function flashCount() {
+		local.flash = $readFlash();
+		local.rv = StructCount(local.flash);
+		return local.rv;
+	}
+
+	/**
+	 * Deletes a specific key from the Flash.
+	 * Returns `true` if the key exists.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 *
+	 * @key The key to delete
+	 */
+	public any function flashDelete(required string key) {
+		local.flash = $readFlash();
+		local.rv = StructDelete(local.flash, arguments.key, true);
+		$writeFlash(local.flash);
+		return local.rv;
+	}
+
+	/**
+	 * Inserts a new key / value into the Flash.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 */
+	public void function flashInsert() {
+		local.flash = $readFlash();
+
+		for (local.key in arguments) {
+			// Does the user want us to append new messages or just replace?
+			if ($getFlashAppend() && StructKeyExists(local.flash, local.key)) {
+				// Are we dealing with just an existing string or an array?
+				if (IsArray(local.flash[local.key])) {
+					ArrayAppend(local.flash[local.key], arguments[local.key]);
+				} else {
+					// Capture previous value, make it an array and append new value
+					local.tempArr = [];
+					ArrayAppend(local.tempArr, local.flash[local.key]);
+					ArrayAppend(local.tempArr, arguments[local.key]);
+					StructInsert(local.flash, local.key, local.tempArr, true);
+				}
+			} else {
+				StructInsert(local.flash, local.key, arguments[local.key], true);
+			}
+		}
+		$writeFlash(local.flash);
+	}
+
+	/**
+	 * Returns whether or not the Flash is empty.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 */
+	public boolean function flashIsEmpty() {
+		if (flashCount()) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+
+	/**
+	 * Make the entire Flash or specific key in it stick around for one more request.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 */
+	public void function flashKeep(string key = "") {
+		$args(args = arguments, name = "flashKeep", combine = "key/keys");
+		request.wheels.flashKeep = arguments.key;
+	}
+
+	/**
+	 * Checks if a specific key exists in the Flash.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 *
+	 * @key The key to check.
+	 */
+	public boolean function flashKeyExists(required string key) {
+		local.flash = $readFlash();
+		return StructKeyExists(local.flash, arguments.key);
+	}
+
+	/**
+	 * Dynamically sets flashStorage during request lifecycle.
+	 *
+	 * [section: Controller]
+	 * [category: Flash Functions]
+	 *
+	 * @storage   Accepts "session" or "cookie"
+	 * @setGlobally       If true, updates both app-level and controller-level flashStorage
+	 */
+	public void function setFlashStorage(string storage = "session", boolean setGlobally = false) {
+		if (listFindNoCase("session,cookie", arguments.storage)) {
+			if (setGlobally) {
+				application.wheels.flashStorage = arguments.storage;
+			}
+			$setFlashStorage(arguments.storage);
+		}
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public struct function $readFlash() {
+		local.rv = {};
+		if ($getFlashStorage() == "cookie" && $inTestHarness() && StructKeyExists(request, "$testCookieFlash")) {
+			// Test-harness shim: cookie writes can't round-trip after the
+			// response buffer commits (Undertow auto-commit), so tests read
+			// from a request-scoped slot instead of the real cookie scope.
+			if (isJSON(request.$testCookieFlash)) {
+				local.rv = DeserializeJSON(request.$testCookieFlash);
+			} else {
+				local.rv = {
+					"action": request.$testCookieFlash
+				};
+			}
+		} else if ($getFlashStorage() == "cookie" && StructKeyExists(cookie, "flash")) {
+			local.cookieValue = $flashCookieScopeValue(cookie.flash);
+			if (isJSON(local.cookieValue)) {
+				local.rv = DeserializeJSON(local.cookieValue);
+			} else if (Len(local.cookieValue)) {
+				local.rv = {
+					"action": local.cookieValue
+				};
+			}
+		} else if ($getFlashStorage() == "session") {
+			// Session flash is per user, so lock the session, not the whole application.
+			lock scope="session" type="readonly" timeout="30" {
+				if (StructKeyExists(session, "flash")) {
+					if (isStruct(session.flash)) {
+						local.rv = Duplicate(session.flash);
+					} else {
+						local.rv = {
+							"action": Duplicate(session.flash)
+						};
+					}
+				}
+			}
+		}
+		return local.rv;
+	}
+
+	/**
+	 * Internal function.
+	 * The flash cookie's value as read from the cookie scope. When this request wrote the
+	 * cookie (cookie["flash"] = {value, httpOnly, ...}), Lucee, Adobe and BoxLang read it
+	 * back as its value, but RustCFML returns the struct that was assigned, so take its
+	 * value. A simple value (string, number or boolean) is returned as is; anything else
+	 * reads as no cookie ("").
+	 */
+	public string function $flashCookieScopeValue(required any raw) {
+		local.rv = arguments.raw;
+		if (IsStruct(local.rv) && StructKeyExists(local.rv, "value")) {
+			local.rv = local.rv.value;
+		}
+		return IsSimpleValue(local.rv) ? local.rv : "";
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public any function $writeFlash(struct flash = {}) {
+		if ($getFlashStorage() == "cookie") {
+			if ($inTestHarness()) {
+				// Test-harness shim: writing to the cookie scope triggers
+				// a Set-Cookie response header, which throws
+				// IllegalStateException on Undertow once the response
+				// buffer has auto-committed (which happens mid-run
+				// because the runner streams the large results JSON back
+				// to the client before this spec executes). Round-trip
+				// through a request-scoped slot instead.
+				request.$testCookieFlash = SerializeJSON(arguments.flash);
+			} else {
+				// Write through an attribute collection so the cookie carries
+				// httpOnly / secure / sameSite flags (mirrors the CSRF cookie).
+				cookie["flash"] = $flashCookieAttributeCollection(SerializeJSON(arguments.flash));
+			}
+		} else if ($getFlashStorage() == "session") {
+			// Session flash is per user, so lock the session, not the whole application.
+			lock scope="session" type="exclusive" timeout="30" {
+				session.flash = arguments.flash;
+			}
+		}
+	}
+
+	/**
+	 * Internal function. Returns true when running inside the Wheels test
+	 * harness. Set by `wheels/tests/runner.cfm` for every core test request.
+	 * Pure CFML — no engine-specific Java calls — so it is safe on
+	 * Lucee 5/6/7, Adobe 2018-2025, and BoxLang.
+	 */
+	public boolean function $inTestHarness() {
+		return StructKeyExists(request, "$wheelsTestRun") && request.$wheelsTestRun;
+	}
+
+	/**
+	 * Internal function.
+	 * Builds the attribute collection used when writing the flash cookie so it is
+	 * flagged httpOnly / secure / sameSite (mirrors $csrfCookieAttributeCollection).
+	 */
+	public struct function $flashCookieAttributeCollection(required string value) {
+		local.cookieStruct = {
+			value = arguments.value,
+			httpOnly = application.wheels.flashCookieHttpOnly,
+			secure = application.wheels.flashCookieSecure
+		};
+		if (Len(application.wheels.flashCookieSameSite)) {
+			local.cookieStruct.sameSite = application.wheels.flashCookieSameSite;
+		}
+		return local.cookieStruct;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public void function $flashClear() {
+		// Nothing in the session flash, so skip the write (and its lock) on every request.
+		if (
+			$getFlashStorage() == "session"
+			&& (!StructKeyExists(session, "flash") || (IsStruct(session.flash) && StructIsEmpty(session.flash)))
+		) {
+			return;
+		}
+
+		// Only save the old flash if they want to keep anything.
+		if (StructKeyExists(request.wheels, "flashKeep")) {
+			local.flash = $readFlash();
+		}
+
+		// Clear the current flash.
+		flashClear();
+
+		// See if they wanted to keep anything.
+		if (StructKeyExists(local, "flash")) {
+			// Delete any keys they don't want to keep.
+			if (Len(request.wheels.flashKeep)) {
+				for (local.key in local.flash) {
+					if (!ListFindNoCase(request.wheels.flashKeep, local.key)) {
+						StructDelete(local.flash, local.key);
+					}
+				}
+			}
+
+			// Write to the flash.
+			$writeFlash(local.flash);
+		}
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public void function $setFlashStorage(required string storage) {
+		variables.$class.flashStorage = arguments.storage;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $getFlashStorage() {
+		return variables.$class.flashStorage;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public void function $setFlashAppend(required boolean append) {
+		variables.$class.flashAppend = arguments.append;
+	}
+
+	/**
+	 * Internal function.
+	 */
+	public string function $getFlashAppend() {
+		return variables.$class.flashAppend;
+	}
+}

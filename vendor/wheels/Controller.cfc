@@ -1,0 +1,600 @@
+component output="false" displayName="Controller" extends="wheels.Global"{
+
+	function init(){
+		if ($controllerIntegrationCacheEnabled()) {
+			$applyCachedIntegration();
+		} else {
+			$integrateComponents("wheels.controller");
+			$integrateComponents("wheels.view");
+		}
+		return this;
+	}
+
+	/**
+	 * If the controller file exists we instantiate it, otherwise we instantiate the parent controller.
+	 * This is done so that an action's view page can be rendered without having an actual controller file for it.
+	 */
+	public any function $createControllerObject(required struct params) {
+		local.controllerName = $objectFileName(
+			name = variables.$class.name,
+			objectPath = variables.$class.path,
+			type = "controller"
+		);
+		return $createObjectFromRoot(
+			path = variables.$class.path,
+			fileName = local.controllerName,
+			method = "$initControllerObject",
+			name = variables.$class.name,
+			params = arguments.params
+		);
+	}
+
+	/**
+	 * Return the controller data that is on the class level.
+	 */
+	public struct function $getControllerClassData() {
+		return variables.$class;
+	}
+
+	/**
+	 * Initialize the controller class level object and return it.
+	 */
+	public any function $initControllerClass(string name = "") {
+		variables.$class.name = arguments.name;
+		variables.$class.path = arguments.path;
+		variables.$class.verifications = [];
+		variables.$class.filters = [];
+		variables.$class.cachableActions = [];
+		variables.$class.layouts = [];
+
+		// Setup format info for providing content.
+		// Default the controller to only respond to HTML.
+		variables.$class.formats = {};
+		variables.$class.formats.default = "html";
+		variables.$class.formats.actions = {};
+		variables.$class.formats.templateCache = {};
+
+		// Storage for declared service injections (populated by inject() in config)
+		variables.$class.services = [];
+
+		$setFlashStorage($get("flashStorage"));
+		$setFlashAppend($get("flashAppend"));
+
+		// The application's global helpers, so config() can call them.
+		$includeGlobalHelpers();
+
+		// Call the developer's "config" function if it exists.
+		if (StructKeyExists(variables, "config")) {
+			config();
+			$warnIfConfigSkipsSuper();
+		}
+
+		return this;
+	}
+
+	/**
+	 * Internal function. Includes the application's global helper file (`<viewPath>/helpers.cfm`)
+	 * into this object, once per object: called from $initControllerClass() and
+	 * $initControllerObject(). It used to be included in the pseudo-constructor, which relies on
+	 * the engine running that per instance, and only while the application scope was ready. Whether
+	 * the file exists is checked once and kept in helperFileCache (under a key no controller name
+	 * can take) when cacheFileChecking is on, like the controller-specific helper file.
+	 */
+	public void function $includeGlobalHelpers() {
+		local.template = $get("viewPath") & "/helpers.cfm";
+		local.cacheKey = "$global";
+		local.canCache = StructKeyExists(application, "wheels") && StructKeyExists(application.wheels, "helperFileCache");
+		if (local.canCache && StructKeyExists(application.wheels.helperFileCache, local.cacheKey)) {
+			local.exists = application.wheels.helperFileCache[local.cacheKey];
+		} else {
+			local.exists = FileExists(ExpandPath(local.template));
+			if (local.canCache && $get("cacheFileChecking")) {
+				application.wheels.helperFileCache[local.cacheKey] = local.exists;
+			}
+		}
+		if (local.exists) {
+			$include(template = local.template);
+		}
+	}
+
+	/**
+	 * Initialize the controller instance level object and return it.
+	 */
+	public any function $initControllerObject(required string name, required struct params) {
+		// Create a struct for storing request specific data.
+		variables.$instance = {};
+		variables.$instance.contentFor = {};
+
+		// The application's global helpers first, so a controller helper can override one.
+		$includeGlobalHelpers();
+
+		// Set file name to look for (e.g. "app/views/folder/helpers.cfm").
+		// Name could be dot notation so we need to change delimiters.
+		local.template = $get("viewPath") & "/" & LCase(ListChangeDelims(arguments.name, '/', '.')) & "/helpers.cfm";
+
+		// Check if the file exists on the file system if we have not already checked in a previous request.
+		// When the controller is not present in the cache we know that we have not yet checked for it.
+		local.helperFileExists = false;
+		if (!StructKeyExists(application.wheels.helperFileCache, arguments.name)) {
+			if (FileExists(ExpandPath(local.template))) {
+				local.helperFileExists = true;
+			}
+			if ($get("cacheFileChecking")) {
+				application.wheels.helperFileCache[arguments.name] = local.helperFileExists;
+			}
+		}
+
+		// Include controller specific helper file if it exists.
+		if (
+			Len(arguments.name)
+			&& (
+				local.helperFileExists
+				|| (
+					StructKeyExists(application.wheels.helperFileCache, arguments.name)
+					&& application.wheels.helperFileCache[arguments.name]
+				)
+			)
+		) {
+			$include(template = local.template);
+		}
+
+		local.executeArgs = {};
+		local.executeArgs.name = arguments.name;
+		local.lockName = "controllerLock" & application.applicationName;
+		$simpleLock(
+			name = local.lockName,
+			type = "readonly",
+			execute = "$setControllerClassData",
+			executeArgs = local.executeArgs
+		);
+		variables.params = arguments.params;
+
+		// Resolve any services declared via inject() in config()
+		$resolveInjectedServices();
+
+		return this;
+	}
+
+	/**
+	 * Get the class level data from the controller object in the application scope and set it to this controller.
+	 * By class level we mean that it's stored in the controller object in the application scope.
+	 */
+	public void function $setControllerClassData() {
+		variables.$class = application.wheels.controllers[arguments.name].$getControllerClassData();
+	}
+
+	/**
+	 * Internal function. Called once per controller class at init time (after the
+	 * developer's config() has run). In the development environment it registers a
+	 * warning when the controller overrides config() without calling super.config(),
+	 * which silently drops the parent controller's setup: protectsFromForgery() CSRF
+	 * protection, filters, verifies, injected services, etc. The warning is surfaced
+	 * in the debug bar and the standard wheels log. Best-effort by design (mirrors
+	 * $deprecated() in Global.cfc): any failure here must never break controller
+	 * initialization.
+	 */
+	public void function $warnIfConfigSkipsSuper() {
+		try {
+			if ($get("environment") != "development") {
+				return;
+			}
+			if (!$configOverrideSkipsSuper()) {
+				return;
+			}
+			local.appKey = $appKey();
+			if (!StructKeyExists(application, local.appKey)) {
+				return;
+			}
+			local.message = "Controller '#variables.$class.name#' overrides config() without calling super.config(). Setup in its parent controller's config() (including protectsFromForgery() CSRF protection, filters, and verifies) will not run for this controller. Add super.config() as the first line of its config().";
+			// One app-wide lock serializes the lazy creation of the registry array and
+			// the dedup check / registration (mirrors $deprecated() in Global.cfc).
+			lock name="wheels_config_warning_registry" type="exclusive" timeout="5" {
+				if (!StructKeyExists(application[local.appKey], "controllerConfigWarnings")) {
+					application[local.appKey].controllerConfigWarnings = [];
+				}
+				for (local.existing in application[local.appKey].controllerConfigWarnings) {
+					if (local.existing.controller == variables.$class.name) {
+						return;
+					}
+				}
+				ArrayAppend(
+					application[local.appKey].controllerConfigWarnings,
+					{controller = variables.$class.name, message = local.message}
+				);
+				// Log if-and-only-if the registration above just succeeded; the registry
+				// enforces the warn-once policy for the log too.
+				try {
+					WriteLog(type = "warning", text = "[Wheels] " & local.message, file = "wheels");
+				} catch (any e) {
+					// Logging is best-effort; the registry entry above already records the warning.
+				}
+			}
+		} catch (any e) {
+			// Best-effort by design (including lock timeouts); never let this advisory
+			// break controller initialization.
+		}
+	}
+
+	/**
+	 * Internal function. Returns true when this controller class overrides config()
+	 * (shadowing a config() declared by an ancestor below wheels.Controller) without
+	 * its source calling super.config(). Pure detection; returns false whenever the
+	 * situation cannot be verified (never warn on uncertainty).
+	 */
+	public boolean function $configOverrideSkipsSuper() {
+		// Walk the inheritance chain from the leaf up to (but excluding) the
+		// framework's wheels.Controller, collecting each component's metadata node.
+		// The boundary match is belt-and-braces: no framework ancestor declares a
+		// config() function, so walking past a differently-named boundary is benign.
+		local.nodes = [];
+		local.node = GetMetaData(this);
+		while (IsStruct(local.node)) {
+			if (
+				StructKeyExists(local.node, "name")
+				&& ReFindNoCase("(^|\.)wheels\.Controller$", local.node.name)
+			) {
+				break;
+			}
+			ArrayAppend(local.nodes, local.node);
+			if (!StructKeyExists(local.node, "extends")) {
+				break;
+			}
+			local.node = local.node.extends;
+		}
+
+		// Find the leaf-most node that declares config(): that is the implementation
+		// that actually executed at class init.
+		local.declarerIndex = 0;
+		local.iEnd = ArrayLen(local.nodes);
+		for (local.i = 1; local.i <= local.iEnd; local.i++) {
+			if ($nodeDeclaresConfig(local.nodes[local.i])) {
+				local.declarerIndex = local.i;
+				break;
+			}
+		}
+
+		// No user-level config() declared anywhere (e.g. mixin-injected): nothing to check.
+		if (local.declarerIndex == 0) {
+			return false;
+		}
+
+		// Unless an ancestor of the declarer also declares config(), nothing was
+		// shadowed (the base-controller case: its config() simply has no parent
+		// config() to call up to).
+		local.shadowed = false;
+		for (local.i = local.declarerIndex + 1; local.i <= local.iEnd; local.i++) {
+			if ($nodeDeclaresConfig(local.nodes[local.i])) {
+				local.shadowed = true;
+				break;
+			}
+		}
+		if (!local.shadowed) {
+			return false;
+		}
+
+		// Cannot verify the source: never warn on uncertainty.
+		local.declarer = local.nodes[local.declarerIndex];
+		if (!StructKeyExists(local.declarer, "path") || !FileExists(local.declarer.path)) {
+			return false;
+		}
+		return !$sourceCallsSuperConfig(local.declarer.path);
+	}
+
+	/**
+	 * Internal function. Returns true when the given component metadata node declares
+	 * its own (non-inherited) config() function.
+	 */
+	public boolean function $nodeDeclaresConfig(required struct node) {
+		if (StructKeyExists(arguments.node, "functions") && IsArray(arguments.node.functions)) {
+			local.iEnd = ArrayLen(arguments.node.functions);
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				if (
+					StructKeyExists(arguments.node.functions[local.i], "name")
+					&& arguments.node.functions[local.i].name == "config"
+				) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Internal function. Comment-aware scan of a component source file for a
+	 * super.config() call. Strips line comments, block comments, and tag comments
+	 * line by line before matching, so a commented-out super.config() is correctly
+	 * reported as not calling it.
+	 *
+	 * Known accepted limitation: a literal comment-opener sequence inside a quoted
+	 * string before a same-line super.config() call strips the call from view and
+	 * yields a false positive warning. The commented-out super.config() case (the
+	 * realistic footgun) is detected correctly.
+	 *
+	 * NOTE: deliberately a line-by-line scanner. A global non-greedy regex comment
+	 * stripper is known to hang Lucee 7 on large files.
+	 */
+	public boolean function $sourceCallsSuperConfig(required string filePath) {
+		// Build the tag-comment markers without a literal angle bracket so engine
+		// tag scanners never mistake this source file for containing an unclosed tag.
+		local.tagOpen = Chr(60) & "!---";
+		local.tagClose = "---" & Chr(62);
+		local.lines = ListToArray(FileRead(arguments.filePath), Chr(10), false);
+		local.inBlock = false;
+		local.blockCloser = "";
+		local.iEnd = ArrayLen(local.lines);
+		for (local.i = 1; local.i <= local.iEnd; local.i++) {
+			local.remaining = local.lines[local.i];
+			local.code = "";
+			// Bounded loop: every iteration consumes at least one comment marker.
+			local.guard = 0;
+			while (Len(local.remaining) && local.guard < 1000) {
+				local.guard++;
+				if (local.inBlock) {
+					local.closePos = Find(local.blockCloser, local.remaining);
+					if (local.closePos == 0) {
+						// Comment continues on the next line.
+						local.remaining = "";
+					} else {
+						local.remaining = Mid(
+							local.remaining,
+							local.closePos + Len(local.blockCloser),
+							Len(local.remaining)
+						);
+						local.inBlock = false;
+					}
+				} else {
+					// Earliest comment opener wins; 0 means not present on this line.
+					local.linePos = Find("//", local.remaining);
+					local.blockPos = Find("/*", local.remaining);
+					local.tagPos = Find(local.tagOpen, local.remaining);
+					local.firstPos = 0;
+					local.marker = "";
+					if (local.linePos > 0) {
+						local.firstPos = local.linePos;
+						local.marker = "line";
+					}
+					if (local.blockPos > 0 && (local.firstPos == 0 || local.blockPos < local.firstPos)) {
+						local.firstPos = local.blockPos;
+						local.marker = "block";
+					}
+					if (local.tagPos > 0 && (local.firstPos == 0 || local.tagPos < local.firstPos)) {
+						local.firstPos = local.tagPos;
+						local.marker = "tag";
+					}
+					if (local.firstPos == 0) {
+						local.code &= local.remaining;
+						local.remaining = "";
+					} else {
+						if (local.firstPos > 1) {
+							local.code &= Left(local.remaining, local.firstPos - 1);
+						}
+						if (local.marker == "line") {
+							// The rest of the line is a comment.
+							local.remaining = "";
+						} else {
+							local.inBlock = true;
+							if (local.marker == "block") {
+								local.blockCloser = "*/";
+								local.openerLen = 2;
+							} else {
+								local.blockCloser = local.tagClose;
+								local.openerLen = Len(local.tagOpen);
+							}
+							local.remaining = Mid(
+								local.remaining,
+								local.firstPos + local.openerLen,
+								Len(local.remaining)
+							);
+						}
+					}
+				}
+			}
+			if (ReFindNoCase("super\s*\.\s*config\s*\(", local.code)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Gets all the component files from the provided path
+	 *
+	 * @path The path to get component files from
+	 */
+	private function $integrateComponents(required string path) {
+		// The directory scan + per-file createObject + getMetaData, plus the
+		// public-method/reference resolution, are cached per path (issue #3213) —
+		// they are identical for every controller instance. Only the reference
+		// assignment below runs on each materialization. The mixin-override set is
+		// resolved once per call (empty in the common no-mixins case) so the old
+		// per-method $willBeOverriddenByMixin function call is gone from the loop.
+		local.plan = $componentIntegrationPlan(arguments.path);
+		local.overrideSet = $mixinOverrideSet("controller");
+		local.iEnd = ArrayLen(local.plan);
+		for (local.i = 1; local.i <= local.iEnd; local.i++) {
+			$integrateFunctions(local.plan[local.i].publicMethods, local.overrideSet);
+		}
+	}
+
+	/**
+	 * Mix a component's pre-resolved public methods (each `{name, ref}`, see
+	 * $componentIntegrationPlan) into this instance. A method that does not already
+	 * exist (from inheritance or an earlier-integrated component) is added; one that
+	 * DOES already exist is left alone and the framework original is exposed as
+	 * `super<name>`, so an app override can delegate to it. Any method a
+	 * plugin/package mixin will override is likewise aliased. `overrideSet` is the
+	 * precomputed mixin-override name set.
+	 *
+	 * The `super<name>` else-branch matches Model.cfc, which has always had it. Its
+	 * absence here meant an app that overrode a controller or view helper — exactly
+	 * as the "Overriding Core Methods" guide documents — got no `superLinkTo()` and a
+	 * 500 at render time (issue #3325, from discussion #3323). Only app overrides
+	 * reach the branch: no two framework mixins contribute the same name, so a
+	 * controller that overrides nothing gains zero extra keys.
+	 */
+	private function $integrateFunctions(required array publicMethods, required struct overrideSet) {
+		local.iEnd = ArrayLen(arguments.publicMethods);
+		for (local.i = 1; local.i <= local.iEnd; local.i++) {
+			local.m = arguments.publicMethods[local.i];
+			local.name = local.m.name;
+			local.ref = local.m.ref;
+
+			if (!(StructKeyExists(variables, local.name) || StructKeyExists(this, local.name))) {
+				variables[local.name] = local.ref;
+				this[local.name] = local.ref;
+			} else {
+				local.superName = "super" & local.name;
+				variables[local.superName] = local.ref;
+				this[local.superName] = local.ref;
+			}
+
+			if (StructKeyExists(arguments.overrideSet, local.name)) {
+				local.superName = "super" & local.name;
+				variables[local.superName] = local.ref;
+				this[local.superName] = local.ref;
+			}
+		}
+	}
+
+	/**
+	 * Whether init() applies this class's cached integration result (#4149) instead of
+	 * mixing the controller and view methods in one at a time. On outside development
+	 * (cacheControllerIntegration); development keeps the loop, because controller
+	 * methods are edited there without a reload.
+	 */
+	private boolean function $controllerIntegrationCacheEnabled() {
+		return StructKeyExists(application, "wheels")
+			&& StructKeyExists(application.wheels, "cacheControllerIntegration")
+			&& application.wheels.cacheControllerIntegration;
+	}
+
+	/**
+	 * Mix the controller and view methods into this instance from the per-class result
+	 * that $buildControllerIntegration() computes once (#4149): the same keys and refs
+	 * the per-method loop writes, applied with StructAppend. New methods never overwrite
+	 * a name the instance already has; super<name> aliases always do, as in the loop.
+	 * If a name the result treats as already present (an override) is missing on this
+	 * instance, the class changed since the result was built, so this instance takes
+	 * the loop and the result is rebuilt for the next one.
+	 */
+	private void function $applyCachedIntegration() {
+		local.result = $controllerIntegrationResult();
+		if (!$integrationCollisionsPresent(local.result.collisions)) {
+			$integrateComponents("wheels.controller");
+			$integrateComponents("wheels.view");
+			$forgetControllerIntegration(local.result.key);
+			return;
+		}
+		StructAppend(variables, local.result.adds, false);
+		StructAppend(this, local.result.adds, false);
+		StructAppend(variables, local.result.supers, true);
+		StructAppend(this, local.result.supers, true);
+	}
+
+	/**
+	 * This class's cached integration result, built from this instance the first time.
+	 */
+	private struct function $controllerIntegrationResult() {
+		local.key = $controllerIntegrationKey();
+		if (
+			StructKeyExists(application.wheels, "controllerIntegration")
+			&& StructKeyExists(application.wheels.controllerIntegration, local.key)
+		) {
+			return application.wheels.controllerIntegration[local.key];
+		}
+		local.result = $buildControllerIntegration(local.key);
+		lock name="wheels.integrationPlans.#application.applicationName#" type="exclusive" timeout="10" {
+			if (!StructKeyExists(application.wheels, "controllerIntegration")) {
+				application.wheels.controllerIntegration = {};
+			}
+			application.wheels.controllerIntegration[local.key] = local.result;
+		}
+		return local.result;
+	}
+
+	/**
+	 * The cache key for this instance's class: its full component name.
+	 */
+	private string function $controllerIntegrationKey() {
+		local.meta = GetMetaData(this);
+		if (StructKeyExists(local.meta, "fullName") && Len(local.meta.fullName)) {
+			return local.meta.fullName;
+		}
+		return local.meta.name;
+	}
+
+	/**
+	 * Run the integration loop's decisions without writing to this instance, and return
+	 * what it would write: `adds` (name -> ref), `supers` (super<name> -> ref, in loop
+	 * order) and `collisions` (names the instance already had, i.e. its overrides).
+	 * The plans and the mixin-override set are per application and the names present
+	 * before integration are fixed per class, so the result holds for every instance.
+	 */
+	private struct function $buildControllerIntegration(required string key) {
+		local.rv = {key = arguments.key, adds = {}, supers = {}, collisions = []};
+		local.overrideSet = $mixinOverrideSet("controller");
+		for (local.path in ["wheels.controller", "wheels.view"]) {
+			local.plan = $componentIntegrationPlan(local.path);
+			local.iEnd = ArrayLen(local.plan);
+			for (local.i = 1; local.i <= local.iEnd; local.i++) {
+				$simulateIntegration(local.plan[local.i].publicMethods, local.overrideSet, local.rv);
+			}
+		}
+		return local.rv;
+	}
+
+	/**
+	 * The decisions $integrateFunctions() makes for one component's methods, recorded
+	 * in `result` instead of written to the instance. A name added earlier in the
+	 * simulation counts as present, as it would after the loop's write.
+	 */
+	private void function $simulateIntegration(required array publicMethods, required struct overrideSet, required struct result) {
+		local.iEnd = ArrayLen(arguments.publicMethods);
+		for (local.i = 1; local.i <= local.iEnd; local.i++) {
+			local.name = arguments.publicMethods[local.i].name;
+			local.ref = arguments.publicMethods[local.i].ref;
+			if (!(StructKeyExists(variables, local.name) || StructKeyExists(this, local.name) || StructKeyExists(arguments.result.adds, local.name))) {
+				arguments.result.adds[local.name] = local.ref;
+			} else {
+				arguments.result.supers["super" & local.name] = local.ref;
+				if (!StructKeyExists(arguments.result.adds, local.name) && !ArrayFindNoCase(arguments.result.collisions, local.name)) {
+					ArrayAppend(arguments.result.collisions, local.name);
+				}
+			}
+			if (StructKeyExists(arguments.overrideSet, local.name)) {
+				arguments.result.supers["super" & local.name] = local.ref;
+			}
+		}
+	}
+
+	/**
+	 * Whether every name in `names` is still defined on this instance.
+	 */
+	private boolean function $integrationCollisionsPresent(required array names) {
+		local.iEnd = ArrayLen(arguments.names);
+		for (local.i = 1; local.i <= local.iEnd; local.i++) {
+			if (!(StructKeyExists(variables, arguments.names[local.i]) || StructKeyExists(this, arguments.names[local.i]))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Drop one class's cached integration result, so the next instance rebuilds it.
+	 */
+	private void function $forgetControllerIntegration(required string key) {
+		lock name="wheels.integrationPlans.#application.applicationName#" type="exclusive" timeout="10" {
+			if (StructKeyExists(application.wheels, "controllerIntegration")) {
+				StructDelete(application.wheels.controllerIntegration, arguments.key);
+			}
+		}
+	}
+
+	function onDIcomplete(){
+		$engineAdapter().prepareDIComplete(variables, this);
+		// Shared application-cached instance — constructing wheels.Plugins here
+		// paid the full Global pseudo-constructor on every request (issue 2897).
+		$pluginObj().$initializeMixins(variables);
+	}
+}

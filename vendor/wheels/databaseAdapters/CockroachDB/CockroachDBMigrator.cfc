@@ -1,0 +1,42 @@
+component extends="wheels.databaseAdapters.PostgreSQL.PostgreSQLMigrator" {
+
+	variables.sqlTypes = {};
+	variables.sqlTypes['biginteger'] = {name = 'INT8'};
+	variables.sqlTypes['binary'] = {name = 'BYTES'};
+	variables.sqlTypes['boolean'] = {name = 'BOOL'};
+	variables.sqlTypes['date'] = {name = 'DATE'};
+	variables.sqlTypes['datetime'] = {name = 'TIMESTAMP'};
+	variables.sqlTypes['decimal'] = {name = 'DECIMAL'};
+	variables.sqlTypes['float'] = {name = 'FLOAT8'};
+	variables.sqlTypes['integer'] = {name = 'INT'};
+	// VARCHAR(n) is CockroachDB's alias of STRING(n), but only VARCHAR reports its length
+	// over JDBC; STRING(n) reads back as `text` with no size, so length validation is lost (#4101).
+	variables.sqlTypes['string'] = {name = 'VARCHAR', limit = 255};
+	variables.sqlTypes['text'] = {name = 'STRING'};
+	variables.sqlTypes['time'] = {name = 'TIME'};
+	variables.sqlTypes['timestamp'] = {name = 'TIMESTAMP'};
+	variables.sqlTypes['char'] = {name = 'CHAR', limit = 1};
+	variables.sqlTypes['uuid'] = {name = 'UUID'};
+	variables.sqlTypes['uniqueidentifier'] = {name = 'UUID'};
+	variables.uuidDefaultSQL = 'gen_random_uuid()';
+
+	/**
+	 * name of database adapter
+	 */
+	public string function adapterName() {
+		return "CockroachDB";
+	}
+
+	/**
+	 * generates sql for primary key options
+	 * CockroachDB does not support SERIAL; use INT DEFAULT unique_rowid() instead
+	 */
+	public string function addPrimaryKeyOptions(required string sql, struct options = {}) {
+		if (StructKeyExists(arguments.options, "autoIncrement") && arguments.options.autoIncrement) {
+			arguments.sql = REReplace(arguments.sql, "\bINTEGER\b|\bINT\b", "INT DEFAULT unique_rowid()");
+		}
+		arguments.sql = arguments.sql & " PRIMARY KEY";
+		return arguments.sql;
+	}
+
+}

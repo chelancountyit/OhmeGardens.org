@@ -1,0 +1,1209 @@
+/* ==========================================================================
+   Ohme Gardens - Alpine Garden Sanctuary Experience Stylesheet
+   Modern Bootstrap 5 + WCAG 2.1 AA Compliant Organic Botanical Theme
+   ========================================================================== */
+
+/* Local Typography (Zero External CDNs) */
+@import url('/stylesheets/fonts-local.css');
+
+/* --------------------------------------------------------------------------
+   1. Base & Reset
+   -------------------------------------------------------------------------- */
+html, body {
+	height: 100% !important;
+	color: #212529; /* High contrast body text (15.4:1 on white) */
+	background-color: #fbfcfa; /* Ultra-soft natural linen tint */
+	font-family: 'Raleway', sans-serif;
+	font-size: 16px;
+	line-height: 1.7;
+}
+
+/* --------------------------------------------------------------------------
+   2. Accessibility: Skip-to-Content Link (WCAG 2.4.1 Bypass Blocks)
+   -------------------------------------------------------------------------- */
+.skip-link {
+	position: absolute !important;
+	top: -9999px !important;
+	left: -9999px !important;
+	z-index: 100000 !important;
+	padding: 12px 24px !important;
+	background-color: #2D5A27 !important; /* Alpine Evergreen (8.07:1 on white) */
+	color: #ffffff !important;
+	font-weight: 700 !important;
+	text-decoration: none !important;
+	border: 2px solid #ffffff !important;
+	border-radius: 30px !important;
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+	top: 12px !important;
+	left: 12px !important;
+	outline: 3px solid #96e088 !important;
+	outline-offset: 3px !important;
+}
+
+/* --------------------------------------------------------------------------
+   3. Accessibility: Focus Visible Rings (WCAG 2.4.7 Focus Visible)
+   -------------------------------------------------------------------------- */
+:focus-visible {
+	outline: 3px solid #2D5A27 !important;
+	outline-offset: 2px !important;
+}
+
+.bg-dark :focus-visible,
+footer :focus-visible,
+.navbar-dark :focus-visible,
+.hero-slider :focus-visible,
+.experience-card :focus-visible {
+	outline: 3px solid #96e088 !important;
+	outline-offset: 3px !important;
+}
+
+/* --------------------------------------------------------------------------
+   4. Botanical Typography & Headings (WCAG 1.4.3 Contrast Minimum)
+   -------------------------------------------------------------------------- */
+h1, h2, h3, h4, h5, h6,
+.font-playfair {
+	font-family: 'Playfair Display', Georgia, serif;
+	color: #1b4317; /* Deep Evergreen (11.3:1 contrast on white) */
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+.text-shadow {
+	text-shadow: 0 3px 12px rgba(0, 0, 0, 0.8);
+}
+
+.post-title {
+	color: #1b4317 !important;
+	font-weight: 700;
+}
+
+/* Accessible content links (6.62:1 contrast on white - AAA) with persistent underline */
+.post a:not(.btn),
+.post-entry a:not(.btn) {
+	color: #1e6b18 !important;
+	text-decoration: underline !important;
+	text-underline-offset: 3px;
+	font-weight: 600;
+	transition: color 0.15s ease-in-out;
+}
+
+.post a:not(.btn):hover,
+.post a:not(.btn):focus,
+.post-entry a:not(.btn):hover,
+.post-entry a:not(.btn):focus {
+	color: #13460e !important; /* 10.99:1 contrast - AAA */
+	text-decoration: underline !important;
+}
+
+/* Explicit button styling inside content posts (No underline, 8.07:1 Level AAA white text) */
+.post a.btn,
+.post-entry a.btn,
+.btn,
+.btn:hover,
+.btn:focus,
+.btn:active,
+.btn:visited {
+	text-decoration: none !important;
+}
+
+.post a.btn-success,
+.post-entry a.btn-success,
+.btn-success,
+.btn-success:visited {
+	color: #ffffff !important;
+	background-color: #2D5A27 !important;
+	border-color: #2D5A27 !important;
+	text-decoration: none !important;
+}
+
+.post a.btn-success:hover,
+.post a.btn-success:focus,
+.post-entry a.btn-success:hover,
+.post-entry a.btn-success:focus,
+.btn-success:hover,
+.btn-success:focus {
+	color: #ffffff !important;
+	background-color: #1e4a1a !important;
+	border-color: #1e4a1a !important;
+	text-decoration: none !important;
+}
+
+.btn.btn-circle {
+	border-radius: 50px !important;
+	padding: 10px 32px !important;
+	font-weight: 700 !important;
+	font-size: 0.95rem !important;
+	letter-spacing: 1px !important;
+	display: inline-block;
+}
+
+.post p {
+	margin-bottom: 1.25rem;
+}
+
+/* --------------------------------------------------------------------------
+   5. Modern Botanical Navbar & Topbar (Deep Conifer Theme)
+   -------------------------------------------------------------------------- */
+.navbar-custom {
+	transition: background-color 0.35s ease, border-color 0.35s ease, padding 0.35s ease, box-shadow 0.35s ease;
+}
+
+/* Solid Navbar (Interior Pages & Scrolled State) */
+.navbar-custom,
+.navbar-custom:not(.navbar-transparent),
+.navbar.navbar-dark.bg-dark,
+.navbar.bg-conifer {
+	background-color: #152716 !important; /* Deep Conifer Canopy */
+	border-bottom: 3px solid #2D5A27 !important;
+	box-shadow: 0 4px 20px rgba(10, 20, 10, 0.25) !important;
+}
+
+/* Transparent Navbar (Homepage Top Hero Overlay) */
+.navbar-custom.navbar-transparent {
+	background-color: transparent !important;
+	background-image: linear-gradient(180deg, rgba(12, 24, 13, 0.78) 0%, rgba(12, 24, 13, 0.42) 65%, rgba(12, 24, 13, 0) 100%) !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+	box-shadow: none !important;
+}
+
+/* Responsive Brand Logo */
+.navbar-brand img {
+	height: 84px !important;
+	max-height: 84px !important;
+	width: auto !important;
+	transition: transform 0.2s ease;
+	display: block;
+}
+
+.navbar-brand:hover img {
+	transform: scale(1.03);
+}
+
+.navbar .nav-link {
+	color: #ffffff !important;
+	font-weight: 600;
+	font-size: 0.95rem;
+	padding: 0.65rem 0.95rem !important;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+	color: #96e088 !important; /* Sunlit moss green */
+}
+
+/* Bootstrap 5 Dropdown Compatibility Fix (neutralize legacy style.css) */
+.navbar .dropdown-menu {
+	background-color: #ffffff !important;
+	border: 1px solid #d5dfcc !important;
+	box-shadow: 0 12px 32px rgba(18, 36, 18, 0.18) !important;
+	border-radius: 12px;
+	padding: 0.5rem 0;
+	overflow: hidden;
+}
+
+.navbar .dropdown-menu:not(.show) {
+	display: none !important;
+	visibility: hidden !important;
+	opacity: 0 !important;
+}
+
+.navbar .dropdown-menu.show {
+	display: block !important;
+	visibility: visible !important;
+	opacity: 1 !important;
+}
+
+/* Desktop & Sitewide Dropdown Menu Styling */
+.navbar-custom .dropdown-menu {
+	background-color: #ffffff !important;
+	border: 1px solid #d5dfcc !important;
+	border-radius: 12px !important;
+	box-shadow: 0 16px 40px rgba(18, 36, 18, 0.22) !important;
+	padding: 0.5rem 0 !important;
+	min-width: 250px !important;
+	margin-top: 0.5rem !important;
+}
+
+.navbar-custom .dropdown-menu > li > a,
+.navbar-custom .dropdown-menu .dropdown-item {
+	font-family: 'Raleway', sans-serif !important;
+	font-size: 0.925rem !important;
+	font-weight: 600 !important;
+	text-transform: none !important;
+	letter-spacing: 0.2px !important;
+	color: #1b4317 !important; /* Deep Botanical Green (11.28:1 contrast on white) */
+	padding: 0.65rem 1.35rem !important;
+	border-bottom: 1px solid #f2f6ef !important;
+	transition: background-color 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+	display: block !important;
+	white-space: normal !important;
+	background: transparent !important;
+}
+
+.navbar-custom .dropdown-menu > li:last-child > a,
+.navbar-custom .dropdown-menu > li:last-child .dropdown-item {
+	border-bottom: none !important;
+}
+
+/* Distinct, high-contrast hover state - Level AAA Contrast */
+.navbar-custom .dropdown-menu > li > a:hover,
+.navbar-custom .dropdown-menu > li > a:focus,
+.navbar-custom .dropdown-menu .dropdown-item:hover,
+.navbar-custom .dropdown-menu .dropdown-item:focus,
+.navbar-custom .dropdown-menu .dropdown-item:focus-visible {
+	background-color: #2D5A27 !important; /* Evergreen Brand */
+	color: #ffffff !important; /* Crisp White Text (8.07:1 Level AAA contrast) */
+	padding-left: 1.65rem !important;
+	text-decoration: none !important;
+}
+
+/* Top bar text & links */
+.top-bar {
+	font-size: 0.85rem;
+}
+
+.top-bar a {
+	color: #ffffff !important;
+	transition: color 0.15s ease;
+}
+
+.top-bar a:hover,
+.top-bar a:focus {
+	color: #96e088 !important;
+}
+
+/* Desktop Navigation Top Border Divider */
+@media (min-width: 992px) {
+	.nav-menu-list {
+		border-top: 1px solid rgba(255, 255, 255, 0.22);
+	}
+}
+
+/* Mobile Toggler Styling (Prominent, High Contrast & Accessible) */
+.navbar-toggler {
+	border: 1.5px solid rgba(255, 255, 255, 0.6) !important;
+	border-radius: 8px !important;
+	padding: 0.45rem 0.7rem !important;
+	background-color: rgba(255, 255, 255, 0.08) !important;
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.navbar-toggler:hover,
+.navbar-toggler:focus {
+	background-color: rgba(45, 90, 39, 0.5) !important;
+	border-color: #96e088 !important;
+	box-shadow: 0 0 0 3px rgba(150, 224, 136, 0.4) !important;
+	outline: none !important;
+}
+
+.navbar-dark .navbar-toggler-icon {
+	background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.95%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2.2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+}
+
+/* Mobile Navigation Drawer System (Clean, Scrollable, 100% Legibility) */
+@media (max-width: 991.98px) {
+	.navbar-custom .navbar-collapse.collapsing,
+	.navbar-custom .navbar-collapse.show {
+		background-color: #152716 !important; /* Deep Conifer Canopy */
+		padding: 1.25rem 1.25rem 1.75rem 1.25rem !important;
+		border-radius: 12px !important;
+		margin-top: 0.75rem !important;
+		border: 1px solid rgba(255, 255, 255, 0.18) !important;
+		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65) !important;
+		max-height: calc(100vh - 85px);
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.navbar-custom .navbar-nav {
+		width: 100% !important;
+		background: transparent !important;
+		padding: 0 !important;
+		margin: 0 !important;
+	}
+
+	.navbar-custom .navbar-nav .nav-item {
+		width: 100% !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+	}
+
+	.navbar-custom .navbar-nav .nav-link {
+		padding: 0.85rem 0.5rem !important;
+		font-size: 1.05rem !important;
+		font-weight: 600 !important;
+		display: flex !important;
+		align-items: center !important;
+		justify-content: space-between !important;
+		color: #ffffff !important;
+		text-decoration: none !important;
+		letter-spacing: 0.5px;
+	}
+
+	.navbar-custom .navbar-nav .nav-link:hover,
+	.navbar-custom .navbar-nav .nav-link:focus {
+		color: #96e088 !important;
+		background-color: rgba(255, 255, 255, 0.04) !important;
+	}
+
+	/* Mobile Dropdown Submenus (Inline Accordion Style) */
+	.navbar-custom .navbar-nav .dropdown-menu {
+		position: static !important;
+		float: none !important;
+		width: 100% !important;
+		background-color: #1d361f !important; /* Elegant nested moss tint */
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		border-radius: 8px !important;
+		margin: 0.25rem 0 0.65rem 0 !important;
+		padding: 0.5rem 0 !important;
+		box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.25) !important;
+		transform: none !important;
+	}
+
+	.navbar-custom .navbar-nav .dropdown-item {
+		color: #f0f7ee !important;
+		font-size: 0.95rem !important;
+		padding: 0.6rem 1.25rem !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+		display: block !important;
+		text-transform: none;
+		letter-spacing: normal;
+	}
+
+	.navbar-custom .navbar-nav .dropdown-item:hover,
+	.navbar-custom .navbar-nav .dropdown-item:focus {
+		background-color: #2D5A27 !important;
+		color: #96e088 !important;
+		padding-left: 1.5rem !important;
+	}
+
+	/* Mobile Contact Us Button */
+	.navbar-custom .navbar-nav .nav-item:last-child {
+		border-bottom: none !important;
+	}
+
+	.navbar-custom .navbar-nav .nav-item .btn-success {
+		width: 100% !important;
+		display: block !important;
+		text-align: center !important;
+		margin-top: 1rem !important;
+		padding: 0.75rem 1rem !important;
+		font-size: 1.05rem !important;
+	}
+
+	/* Mobile Translator Dropdown */
+	#translate-listbox-mobile {
+		position: static !important;
+		max-height: 18rem !important;
+		overflow-y: scroll !important;
+		overflow-x: hidden !important;
+		-webkit-overflow-scrolling: touch;
+		width: 100% !important;
+		scrollbar-width: thin !important;
+		scrollbar-color: #2D5A27 #e9f0e6 !important;
+	}
+}
+
+/* --------------------------------------------------------------------------
+   5B. Modern Bootstrap 5 Hero Carousel (Alpine Garden Theme)
+   -------------------------------------------------------------------------- */
+.hero-carousel-section {
+	width: 100%;
+	position: relative;
+	overflow: hidden;
+	background-color: #122214;
+}
+
+.hero-slide-bg {
+	min-height: 600px;
+	height: 75vh;
+	max-height: 800px;
+	background-size: cover;
+	background-position: center center;
+	position: relative;
+	display: flex;
+	align-items: center;
+	padding-top: 85px;
+}
+
+@media (max-width: 991.98px) {
+	.hero-slide-bg {
+		min-height: 520px;
+		height: 65vh;
+		padding-top: 70px;
+	}
+}
+
+.hero-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: linear-gradient(
+		180deg,
+		rgba(14, 28, 15, 0.42) 0%,
+		rgba(12, 25, 13, 0.62) 55%,
+		rgba(9, 18, 10, 0.88) 100%
+	);
+	pointer-events: none;
+}
+
+.carousel-indicators [data-bs-target] {
+	width: 32px;
+	height: 8px;
+	border-radius: 4px;
+	background-color: #ffffff;
+	opacity: 0.55;
+	transition: opacity 0.2s ease, width 0.2s ease, background-color 0.2s ease;
+	border: none;
+	margin: 0 4px;
+}
+
+.carousel-indicators .active {
+	opacity: 1;
+	width: 48px;
+	background-color: #96e088 !important;
+}
+
+.carousel-control-prev,
+.carousel-control-next {
+	width: 8%;
+	opacity: 0.7;
+	transition: opacity 0.2s ease;
+}
+
+.carousel-control-prev:hover,
+.carousel-control-next:hover,
+.carousel-control-prev:focus,
+.carousel-control-next:focus {
+	opacity: 1;
+}
+
+.carousel-control-prev-icon,
+.carousel-control-next-icon {
+	width: 48px;
+	height: 48px;
+	background-color: rgba(18, 36, 18, 0.7);
+	background-size: 55% 55%;
+	border-radius: 50%;
+	border: 1px solid rgba(255, 255, 255, 0.35);
+	backdrop-filter: blur(4px);
+	transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.carousel-control-prev:hover .carousel-control-prev-icon,
+.carousel-control-next:hover .carousel-control-next-icon {
+	background-color: #2D5A27;
+	transform: scale(1.08);
+}
+
+.max-w-850 { max-width: 850px; }
+.max-w-750 { max-width: 750px; }
+.letter-spacing-1 { letter-spacing: 1.5px; }
+
+/* --------------------------------------------------------------------------
+   6. "In the Gardens Today" Experience Bar
+   -------------------------------------------------------------------------- */
+.garden-experience-bar {
+	background: linear-gradient(135deg, #1b3819 0%, #254d22 100%);
+	color: #ffffff;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.garden-metric {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.9rem;
+	color: #e8f2e6;
+	font-weight: 500;
+}
+
+.garden-metric strong {
+	color: #ffffff;
+	font-weight: 700;
+}
+
+.garden-metric .metric-icon {
+	color: #96e088;
+	font-size: 1rem;
+}
+
+/* --------------------------------------------------------------------------
+   7. The 4 Classic Feature Tiles (Visit, Join, Connect, Live Cam)
+   Modern Bootstrap 5 + 4 Distinct Evergreen Hues (All WCAG AAA >= 9.8:1)
+   -------------------------------------------------------------------------- */
+.features-section {
+	position: relative;
+	z-index: 10;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.feature-tile-col {
+	padding: 0 !important;
+}
+
+.feature-tile,
+.gallery-image {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	height: 100%;
+	min-height: 250px;
+	padding: 2.25rem 2rem;
+	color: #ffffff !important;
+	text-decoration: none !important;
+	transition: transform 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
+	position: relative;
+	overflow: hidden;
+}
+
+.feature-tile:hover,
+.feature-tile:focus,
+.gallery-image:hover,
+.gallery-image:focus {
+	color: #ffffff !important;
+	transform: translateY(-4px);
+	filter: brightness(1.10);
+	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+	z-index: 3;
+}
+
+.feature-tile:focus-visible,
+.gallery-image:focus-visible {
+	outline: 3px solid #ffffff !important;
+	outline-offset: -3px !important;
+}
+
+/* 4 Distinct Classic Botanical Colors (All WCAG AAA Compliant on White Text) */
+.feature-tile.tile-visit,
+.gallery-image.visit {
+	background-color: #214d1c !important; /* Alpine Spruce - 9.8:1 AAA contrast */
+	border-top: 4px solid #4a8f3d;
+}
+
+.feature-tile.tile-join,
+.gallery-image.join {
+	background-color: #183f15 !important; /* Deep Fir Forest - 11.9:1 AAA contrast */
+	border-top: 4px solid #3d7e36;
+}
+
+.feature-tile.tile-connect,
+.gallery-image.connect {
+	background-color: #1e4a27 !important; /* Cedar Grove - 10.2:1 AAA contrast */
+	border-top: 4px solid #428a50;
+}
+
+.feature-tile.tile-livecam,
+.gallery-image.livecam {
+	background-color: #153920 !important; /* Mountain Hemlock - 12.8:1 AAA contrast */
+	border-top: 4px solid #367746;
+}
+
+.feature-tile-icon {
+	font-size: 1.85rem;
+	color: rgba(255, 255, 255, 0.9);
+	margin-bottom: 0.85rem;
+}
+
+.feature-tile-title,
+.features-title {
+	font-family: 'Playfair Display', Georgia, serif;
+	font-size: 1.7rem;
+	font-weight: 700;
+	color: #ffffff !important;
+	margin-bottom: 0.75rem;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.feature-tile-desc,
+.features-item p {
+	font-size: 0.95rem;
+	line-height: 1.6;
+	color: rgba(255, 255, 255, 0.94) !important;
+	margin-bottom: 1.25rem;
+}
+
+.feature-tile-arrow {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.875rem;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: #ffffff;
+	opacity: 0.88;
+	transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.feature-tile:hover .feature-tile-arrow,
+.gallery-image:hover .feature-tile-arrow {
+	opacity: 1;
+	transform: translateX(5px);
+}
+
+/* --------------------------------------------------------------------------
+   8. Organic "River Stone" Sidebar Subnavigation
+   -------------------------------------------------------------------------- */
+.sidebar-nav-v1 {
+	border-radius: 16px;
+	overflow: hidden;
+	border: 1px solid #d8e2cf;
+	box-shadow: 0 6px 18px rgba(22, 40, 23, 0.05);
+	background-color: #ffffff;
+}
+
+.sidebar-nav-v1 .list-group-item {
+	background-color: #f7f9f5 !important;
+	border-color: #e2ebd9 !important;
+	padding: 0.85rem 1.35rem;
+	font-size: 0.95rem;
+	transition: background-color 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+}
+
+.sidebar-nav-v1 .list-group-item a {
+	color: #1b4317 !important; /* 10.35:1 contrast - AAA */
+	text-decoration: none !important;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+}
+
+.sidebar-nav-v1 .list-group-item:hover {
+	background-color: #2D5A27 !important;
+	padding-left: 1.6rem;
+}
+
+.sidebar-nav-v1 .list-group-item:hover a {
+	color: #ffffff !important;
+}
+
+.sidebar-nav-v1 .list-group-item.active {
+	background-color: #1e4d1b !important; /* 9.8:1 contrast - AAA */
+	border-color: #1e4d1b !important;
+	position: relative;
+}
+
+.sidebar-nav-v1 .list-group-item.active::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 5px;
+	background-color: #ff9900;
+}
+
+.sidebar-nav-v1 .list-group-item.active a {
+	color: #ffffff !important;
+	font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   9. Breadcrumbs (Organic & Clean)
+   -------------------------------------------------------------------------- */
+.breadcrumb {
+	font-size: 0.875rem;
+	font-weight: 500;
+	background: transparent;
+	padding: 0.5rem 0;
+}
+
+.breadcrumb-item a {
+	color: #1e6b18 !important;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.breadcrumb-item a:hover {
+	color: #13460e !important;
+}
+
+.breadcrumb-item.active {
+	color: #495057 !important;
+	font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   10. Modern Botanical Accordion (FAQ & Guides)
+   -------------------------------------------------------------------------- */
+.accordion-item {
+	border: 1px solid #d5dfcc !important;
+	border-radius: 12px !important;
+	margin-bottom: 0.85rem;
+	overflow: hidden;
+	box-shadow: 0 4px 12px rgba(22, 40, 23, 0.04);
+}
+
+.accordion-button {
+	background-color: #f5f8f3 !important;
+	color: #1b4317 !important;
+	font-weight: 700;
+	font-size: 1.05rem;
+	padding: 1.1rem 1.4rem;
+	border: none;
+	box-shadow: none !important;
+	transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.accordion-button:not(.collapsed) {
+	background-color: #2D5A27 !important;
+	color: #ffffff !important;
+}
+
+.accordion-button:focus {
+	outline: 3px solid #2D5A27 !important;
+	outline-offset: 2px;
+}
+
+.accordion-body {
+	background-color: #ffffff !important;
+	color: #212529 !important;
+	padding: 1.4rem;
+	font-size: 1rem;
+	line-height: 1.75;
+}
+
+/* --------------------------------------------------------------------------
+   11. River Stone Form Controls (WCAG Non-Text Contrast >= 3:1)
+   -------------------------------------------------------------------------- */
+.form-control {
+	border: 1px solid #495057 !important; /* 8.18:1 contrast */
+	border-radius: 10px;
+	padding: 0.75rem 1.1rem;
+	color: #212529;
+	background-color: #ffffff;
+}
+
+.form-control:focus {
+	border-color: #2D5A27 !important;
+	box-shadow: 0 0 0 0.25rem rgba(45, 90, 39, 0.25) !important;
+	outline: none;
+}
+
+.form-label {
+	color: #1b4317 !important;
+	font-weight: 600;
+	margin-bottom: 0.4rem;
+}
+
+/* --------------------------------------------------------------------------
+   12. Botanical Pebble Buttons
+   -------------------------------------------------------------------------- */
+.btn-success {
+	background-color: #2D5A27 !important;
+	border-color: #2D5A27 !important;
+	color: #ffffff !important;
+	font-weight: 700;
+	border-radius: 50px;
+	box-shadow: 0 4px 14px rgba(45, 90, 39, 0.3);
+	transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-success:hover,
+.btn-success:focus {
+	background-color: #1e4a1a !important;
+	border-color: #1e4a1a !important;
+	color: #ffffff !important;
+	transform: translateY(-2px);
+	box-shadow: 0 6px 18px rgba(45, 90, 39, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   13. Footer (Twilight Alpine Forest - Level AAA Contrast)
+   -------------------------------------------------------------------------- */
+footer.footer.bg-dark {
+	background-color: #122214 !important; /* Deep Alpine Twilight */
+	border-top: 4px solid #2D5A27;
+	color: #e4ece1 !important; /* 12.71:1 contrast */
+	font-size: 0.95rem;
+}
+
+.footer-text {
+	color: #e4ece1 !important;
+}
+
+.footer-link {
+	color: #96e088 !important; /* 9.73:1 contrast on #122214 - AAA */
+	text-decoration: underline !important;
+	font-weight: 600;
+	transition: color 0.15s ease;
+}
+
+.footer-link:hover,
+.footer-link:focus {
+	color: #c4f7bc !important; /* 12.70:1 contrast - AAA */
+	text-decoration: underline !important;
+}
+
+/* --------------------------------------------------------------------------
+   14. Legacy Utility Helpers (Preserved for backwards compatibility)
+   -------------------------------------------------------------------------- */
+.padding-0 { padding: 0 !important; }
+.padt-0 { padding-top: 0 !important; }
+.margin-bottom-10 { margin-bottom: 10px !important; }
+.margin-bottom-20 { margin-bottom: 20px !important; }
+.margin-top-20 { margin-top: 20px !important; }
+.color-white { color: #ffffff !important; }
+.font-alt { font-family: 'Raleway', sans-serif; }
+.bordered { border: 1px solid #495057 !important; }
+.gallery-bordered { border: 4px solid #d5dfcc !important; }
+.gallery-bordered-light { border: 4px solid #e2e8db !important; }
+
+/* Scroll-up button */
+.scroll-up a {
+	background-color: #2D5A27 !important;
+	color: #ffffff !important;
+	border: 2px solid #ffffff;
+	border-radius: 50%;
+}
+
+.scroll-up a:hover,
+.scroll-up a:focus {
+	background-color: #1e4a1a !important;
+	color: #96e088 !important;
+}
+
+/* --------------------------------------------------------------------------
+   15. Chelan County Translator Dropdown Component
+   -------------------------------------------------------------------------- */
+.flag-icon {
+	display: inline-block;
+	border-radius: 2px;
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+	object-fit: cover;
+	vertical-align: middle;
+	margin-right: 4px;
+}
+
+.utility-translate-btn {
+	background: none !important;
+	border: 0 !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	color: #ffffff !important;
+	font: inherit;
+	font-size: 0.85rem !important;
+	letter-spacing: 0.5px;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	text-decoration: none !important;
+	cursor: pointer;
+	transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.utility-translate-btn:hover,
+.utility-translate-btn:focus-visible {
+	color: #96e088 !important;
+	opacity: 0.9;
+	text-decoration: none !important;
+}
+
+.translate-listbox {
+	max-height: 22rem !important;
+	overflow-y: scroll !important;
+	overflow-x: hidden !important;
+	min-width: 270px;
+	border-radius: 12px !important;
+	border: 1px solid #c8d8c2 !important;
+	background-color: #ffffff !important;
+	box-shadow: 0 14px 36px rgba(18, 36, 18, 0.22) !important;
+	padding: 0.5rem 0;
+	z-index: 1060;
+	scrollbar-width: thin !important;
+	scrollbar-color: #2D5A27 #e9f0e6 !important;
+}
+
+.translate-listbox .dropdown-item {
+	color: #212529 !important;
+	font-size: 0.875rem !important;
+	padding: 0.4rem 1.15rem !important;
+	white-space: nowrap;
+	font-weight: 500;
+	transition: background-color 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+}
+
+.translate-listbox .dropdown-item:hover,
+.translate-listbox .dropdown-item:focus,
+.translate-listbox .dropdown-item:focus-visible {
+	background-color: #2D5A27 !important;
+	color: #ffffff !important;
+	padding-left: 1.35rem !important;
+	text-decoration: none !important;
+}
+
+/* Highly visible, accessible scrollbar for WebKit/Blink (Chrome, Edge, Safari) */
+.translate-listbox::-webkit-scrollbar {
+	width: 10px !important;
+	display: block !important;
+}
+
+.translate-listbox::-webkit-scrollbar-track {
+	background: #e9f0e6 !important;
+	border-radius: 0 10px 10px 0 !important;
+	border-left: 1px solid #d0dcd0 !important;
+}
+
+.translate-listbox::-webkit-scrollbar-thumb {
+	background: #2D5A27 !important;
+	border-radius: 6px !important;
+	border: 2px solid #e9f0e6 !important;
+}
+
+.translate-listbox::-webkit-scrollbar-thumb:hover {
+	background: #152716 !important;
+}
+
+/* --------------------------------------------------------------------------
+   14. Interactive Illustrated Garden Trail Map (WCAG AAA Compliant)
+   -------------------------------------------------------------------------- */
+.trail-map-section {
+	background-color: #f7faf5;
+}
+
+.status-pill-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	background-color: #e4ebd9;
+	color: #1b4317;
+	border: 1px solid #cad6be;
+	padding: 0.45rem 1.15rem;
+	border-radius: 9999px;
+	font-weight: 600;
+	font-size: 0.875rem;
+}
+
+.status-dot-pulse {
+	width: 8px;
+	height: 8px;
+	background-color: #2D5A27;
+	border-radius: 50%;
+	display: inline-block;
+	box-shadow: 0 0 0 0 rgba(45, 90, 39, 0.7);
+	animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+	0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(45, 90, 39, 0.7); }
+	70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(45, 90, 39, 0); }
+	100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(45, 90, 39, 0); }
+}
+
+.garden-map-card {
+	background-color: #ffffff;
+	border: 1px solid #dbe5cb;
+	border-radius: 1.5rem;
+	overflow: hidden;
+	box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+}
+
+.garden-map-filter-btn {
+	border-radius: 9999px;
+	padding: 0.35rem 1.15rem;
+	font-size: 0.875rem;
+	font-weight: 600;
+	transition: all 0.2s ease;
+	border: 1px solid transparent;
+}
+
+.garden-map-filter-btn.active {
+	background-color: #1b4317;
+	color: #ffffff;
+	border-color: #1b4317;
+}
+
+.garden-map-filter-btn:not(.active) {
+	background-color: transparent;
+	color: #1b4317;
+	border-color: #cad6be;
+}
+
+.garden-map-filter-btn:not(.active):hover {
+	background-color: #e4ebd9;
+	color: #1b4317;
+}
+
+/* Map Canvas Container */
+.garden-map-canvas-wrap {
+	position: relative;
+	width: 100%;
+	background-color: #e2ead6;
+	border-radius: 0 0 1.5rem 1.5rem;
+	overflow: hidden;
+}
+
+.garden-map-canvas-wrap svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+/* Interactive Pins */
+.garden-map-pin {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background-color: #1b4317;
+	color: #ffffff;
+	border: 2px solid rgba(255, 255, 255, 0.9);
+	padding: 5px 12px 5px 6px;
+	border-radius: 9999px;
+	font-size: 0.8rem;
+	font-weight: 700;
+	cursor: pointer;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+	position: absolute;
+	transform: translate(-50%, -50%);
+	text-decoration: none !important;
+	z-index: 5;
+}
+
+.garden-map-pin .pin-num {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background-color: #ffffff;
+	color: #1b4317;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.75rem;
+	font-weight: 800;
+}
+
+.garden-map-pin:hover,
+.garden-map-pin:focus-visible {
+	transform: translate(-50%, -50%) scale(1.08);
+	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+	z-index: 10;
+}
+
+.garden-map-pin:focus-visible {
+	outline: 3px solid #ffbf00;
+	outline-offset: 3px;
+}
+
+.garden-map-pin.active {
+	background-color: #ffffff;
+	color: #1b4317;
+	border-color: #1b4317;
+	box-shadow: 0 8px 24px rgba(27, 67, 23, 0.4);
+	transform: translate(-50%, -50%) scale(1.12);
+	z-index: 15;
+}
+
+.garden-map-pin.active .pin-num {
+	background-color: #1b4317;
+	color: #ffffff;
+}
+
+.garden-map-pin.dimmed {
+	opacity: 0.35;
+	filter: grayscale(70%);
+	pointer-events: none;
+}
+
+/* Right Detail Card */
+.garden-detail-card {
+	background-color: #ffffff;
+	border: 1px solid #dbe5cb;
+	border-radius: 1.5rem;
+	overflow: hidden;
+	box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+	transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.garden-detail-card.updating {
+	opacity: 0.35;
+	transform: translateY(4px);
+}
+
+.garden-detail-banner {
+	position: relative;
+	height: 250px;
+	overflow: hidden;
+	background-color: #1b4317;
+}
+
+.garden-detail-banner img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	filter: brightness(0.85);
+}
+
+.garden-detail-banner::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(180deg, rgba(27,67,23,0.1) 0%, rgba(27,67,23,0.85) 100%);
+}
+
+.garden-detail-quote {
+	position: absolute;
+	bottom: 16px;
+	left: 20px;
+	right: 20px;
+	color: #ffffff;
+	font-style: italic;
+	font-family: 'Playfair Display', serif;
+	font-size: 1.15rem;
+	z-index: 2;
+	text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.garden-meta-box {
+	border-top: 1px solid #e2ead6;
+	border-bottom: 1px solid #e2ead6;
+	padding: 1rem 0;
+	margin: 1.25rem 0;
+}
+
+.garden-meta-label {
+	font-weight: 700;
+	color: #1b4317;
+	font-size: 0.95rem;
+}
+
+.garden-meta-sub {
+	color: #495057;
+	font-size: 0.825rem;
+}
+
+.garden-explore-btn {
+	background-color: #1b4317 !important;
+	color: #ffffff !important;
+	border: none;
+	border-radius: 9999px;
+	padding: 0.75rem 1.5rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	transition: all 0.2s ease;
+	width: 100%;
+	box-shadow: 0 4px 12px rgba(27,67,23,0.25);
+}
+
+.garden-explore-btn:hover,
+.garden-explore-btn:focus-visible {
+	background-color: #2D5A27 !important;
+	color: #ffffff !important;
+	transform: translateY(-2px);
+	box-shadow: 0 6px 18px rgba(27,67,23,0.35);
+}
+

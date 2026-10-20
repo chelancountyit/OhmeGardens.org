@@ -1,0 +1,686 @@
+/**
+ * Database-backed pub/sub adapter for multi-server SSE channels.
+ *
+ * Uses a wheels_events table for event persistence and cross-server
+ * communication. Auto-creates the table on first use (same pattern as Job.cfc).
+ *
+ * Usage:
+ *   var adapter = new wheels.channel.DatabaseAdapter();
+ *   adapter.publish(channel="user.42", event="notification", data='{"title":"Hello"}');
+ *   var events = adapter.poll(channel="user.42", since=dateAdd("n", -5, Now()));
+ */
+component {
+
+	/**
+	 * Initialize the database adapter.
+	 * Gets datasource from application.wheels.dataSourceName.
+	 */
+	public DatabaseAdapter function init() {
+		variables.$datasource = "";
+		if (StructKeyExists(application, "wheels") && StructKeyExists(application.wheels, "dataSourceName")) {
+			variables.$datasource = application.wheels.dataSourceName;
+		}
+		variables.tableVerified = false;
+		// The column poll() orders by to break createdAt ties, resolved per database
+		// by $ensureEventsTable(): a DB-native monotonic "seq" identity column where
+		// one can be created, SQLite's built-in "rowid", or "id" (UUID — stable
+		// within a run but not time-ordered) as a last resort.
+		variables.$orderColumn = "id";
+		// Start the throttle clock at instance creation so a fresh instance does
+		// not run a retention sweep on its very first publish()
+		variables.lastCleanup = GetTickCount() / 1000;
+		variables.retentionMinutes = 60;
+		// Cap on rows deleted per throttled publish-path cleanup pass
+		variables.cleanupBatchSize = 1000;
+		// True while a previous bounded pass hit its cap (backlog still draining)
+		variables.cleanupBacklog = false;
+		return this;
+	}
+
+	public void function $assertChannelName(required string channel) {
+		if (!Len(Trim(arguments.channel))) {
+			throw(type = "Wheels.Channel.InvalidName", message = "Channel name cannot be empty.");
+		}
+	}
+
+	/**
+	 * Publish an event to the database.
+	 *
+	 * @channel The channel name.
+	 * @event The event type.
+	 * @data The event data (string, typically JSON).
+	 * @id Optional event ID. If not provided, a UUID is generated.
+	 * @return Struct with {id, channel, event, persisted}.
+	 */
+	public struct function publish(
+		required string channel,
+		required string event,
+		required string data,
+		string id = CreateUUID()
+	) {
+		$assertChannelName(arguments.channel);
+		$ensureEventsTable();
+		$maybeCleanup();
+
+		try {
+			queryExecute(
+				"INSERT INTO wheels_events (id, channel, event, data, createdAt)
+				VALUES (:id, :channel, :event, :data, :createdAt)",
+				{
+					id: {value: arguments.id, cfsqltype: "cf_sql_varchar"},
+					channel: {value: arguments.channel, cfsqltype: "cf_sql_varchar"},
+					event: {value: arguments.event, cfsqltype: "cf_sql_varchar"},
+					data: {value: arguments.data, cfsqltype: "cf_sql_longvarchar"},
+					createdAt: {value: Now(), cfsqltype: "cf_sql_timestamp"}
+				},
+				{datasource: variables.$datasource}
+			);
+
+			return {
+				id: arguments.id,
+				channel: arguments.channel,
+				event: arguments.event,
+				persisted: true
+			};
+		} catch (any e) {
+			writeLog(
+				text="DatabaseAdapter publish error on [#arguments.channel#]: #e.message#",
+				type="error",
+				file="wheels_channels"
+			);
+			throw(
+				type = "Wheels.Channel.PublishFailed",
+				message = "Failed to persist channel event on [#arguments.channel#]: #e.message#"
+			);
+		}
+	}
+
+	/**
+	 * Poll for events on a channel since a given event ID or timestamp.
+	 *
+	 * Ordering is by the monotonic, insert-assigned sequence (seq / rowid) where one
+	 * exists — the database's own cross-server serialization point — NOT by createdAt,
+	 * which is each publisher's wall clock and so re-orders (and, combined with a
+	 * sequence-based resume, re-delivers) events under multi-server clock skew. The
+	 * since window still filters on createdAt; it just doesn't decide order. An
+	 * unrecognised dialect with no sequence falls back to createdAt then id.
+	 *
+	 * NOTE (insert-vs-commit gap): the sequence is assigned at INSERT, so under
+	 * concurrent transactions a higher sequence can become visible before a lower one
+	 * commits, and a consumer resuming by sequence could skip the lower one once it
+	 * lands. publish() inserts autocommit one row at a time, so the window is a single
+	 * statement; callers that wrap publish() in a longer transaction should be aware.
+	 *
+	 * @channel The channel name to poll.
+	 * @lastEventId If provided, return events after this event, ordered by the monotonic sequence.
+	 * @since If provided (and no lastEventId), return events created after this timestamp.
+	 * @return Query of events with columns: id, channel, event, data, createdAt.
+	 */
+	public query function poll(
+		required string channel,
+		string lastEventId = "",
+		date since = DateAdd("n", -5, Now())
+	) {
+		$assertChannelName(arguments.channel);
+		$ensureEventsTable();
+		local.orderCol = variables.$orderColumn;
+		local.hasSeq = (local.orderCol != "id");
+		// Order by the monotonic key alone where it exists; only the id fallback (no
+		// monotonic key) tie-breaks on createdAt then id.
+		local.orderBy = local.hasSeq ? "#local.orderCol# ASC" : "createdAt ASC, id ASC";
+
+		if (Len(arguments.lastEventId)) {
+			// Resume strictly AFTER the referenced event by the monotonic order column
+			// (seq / rowid), so no event is missed and a same-tick event published
+			// BEFORE lastEventId is never re-delivered. If the referenced row is gone
+			// (already cleaned up), degrade to the since window below rather than
+			// returning nothing. The "id" fallback dialect has no monotonic key, so it
+			// keeps the timestamp-based resume.
+			if (local.hasSeq) {
+				// IS NOT NULL so a reference row whose seq hasn't been populated yet (a row
+				// that slipped in during a staged upgrade's no-default window) is treated as
+				// "no usable cursor" and falls through to the since window below, rather than
+				// producing `seq > NULL`, which matches nothing and would return empty forever.
+				local.ref = queryExecute(
+					"SELECT #local.orderCol# AS ord
+					FROM wheels_events
+					WHERE id = :lastEventId AND channel = :channel AND #local.orderCol# IS NOT NULL",
+					{
+						lastEventId: {value: arguments.lastEventId, cfsqltype: "cf_sql_varchar"},
+						channel: {value: arguments.channel, cfsqltype: "cf_sql_varchar"}
+					},
+					{datasource: variables.$datasource}
+				);
+				if (local.ref.recordCount) {
+					return queryExecute(
+						"SELECT id, channel, event, data, createdAt
+						FROM wheels_events
+						WHERE channel = :channel
+						AND #local.orderCol# > :ord
+						ORDER BY #local.orderCol# ASC",
+						{
+							channel: {value: arguments.channel, cfsqltype: "cf_sql_varchar"},
+							ord: {value: local.ref.ord[1], cfsqltype: "cf_sql_bigint"}
+						},
+						{datasource: variables.$datasource}
+					);
+				}
+				// Referenced row gone — fall through to the since window below.
+			} else {
+				// No monotonic key available (unknown dialect): resume by timestamp.
+				// >= (not >) because the fallback dialect's createdAt may be
+				// second-precision; id != excludes the event itself.
+				return queryExecute(
+					"SELECT e.id, e.channel, e.event, e.data, e.createdAt
+					FROM wheels_events e
+					WHERE e.channel = :channel
+					AND e.id != :lastEventId
+					AND e.createdAt >= (
+						SELECT COALESCE(MAX(r.createdAt), :fallback)
+						FROM wheels_events r
+						WHERE r.id = :lastEventId
+					)
+					ORDER BY e.createdAt ASC, e.id ASC",
+					{
+						channel: {value: arguments.channel, cfsqltype: "cf_sql_varchar"},
+						lastEventId: {value: arguments.lastEventId, cfsqltype: "cf_sql_varchar"},
+						fallback: {value: arguments.since, cfsqltype: "cf_sql_timestamp"}
+					},
+					{datasource: variables.$datasource}
+				);
+			}
+		}
+
+		return queryExecute(
+			"SELECT id, channel, event, data, createdAt
+			FROM wheels_events
+			WHERE channel = :channel
+			AND createdAt > :since
+			ORDER BY #local.orderBy#",
+			{
+				channel: {value: arguments.channel, cfsqltype: "cf_sql_varchar"},
+				since: {value: arguments.since, cfsqltype: "cf_sql_timestamp"}
+			},
+			{datasource: variables.$datasource}
+		);
+	}
+
+	/**
+	 * Delete events older than the specified number of minutes.
+	 *
+	 * On busy multi-server deployments prefer calling this from a scheduled task
+	 * or worker (with a maxRows bound) rather than relying solely on the
+	 * throttled publish-path sweep.
+	 *
+	 * @olderThanMinutes Delete events older than this many minutes (default: retentionMinutes).
+	 * @maxRows Maximum number of rows to delete in this pass. 0 (default) deletes all expired rows.
+	 * @return Number of rows deleted (best effort; 0 on error or when the engine doesn't report it).
+	 */
+	public numeric function cleanup(
+		numeric olderThanMinutes = variables.retentionMinutes,
+		numeric maxRows = 0
+	) {
+		$ensureEventsTable();
+
+		local.cutoff = DateAdd("n", -arguments.olderThanMinutes, Now());
+
+		try {
+			if (arguments.maxRows > 0) {
+				// Bounded pass: select the oldest expired ids first, then delete only
+				// those, so the DELETE (the lock-holding statement) stays small and
+				// indexed even when a large backlog has accumulated. The row bound is
+				// pushed into dialect SQL (TOP / FETCH FIRST / LIMIT) so the database
+				// does an index-assisted top-n read instead of materializing the whole
+				// expired backlog and truncating it client-side.
+				local.candidateSelect = "SELECT id FROM wheels_events WHERE createdAt < :cutoff ORDER BY createdAt ASC";
+				local.candidateSql = $applyRowBound(
+					sqlText = local.candidateSelect,
+					dbType = $detectDatabaseType(),
+					maxRows = arguments.maxRows
+				);
+				// The driver-level maxrows option is only used when the dialect
+				// rewrite applied nothing — $applyRowBound returns the statement
+				// unchanged exactly in that case, and there it is the only bound
+				// available. Everywhere else it is redundant, and redundant is not
+				// free: on BoxLang the option reaches PgPreparedStatement as
+				// setLargeMaxRows(), which pgjdbc has never implemented, so the whole
+				// pass threw and cleanup() reported 0 deleted on postgres and
+				// cockroachdb (#3302). JobWorker.$claimNext already bounds this way
+				// and carries a NOTE saying why; this path kept the option as
+				// belt-and-braces and reintroduced the failure the note warns about.
+				local.candidateOptions = {datasource: variables.$datasource};
+				if (local.candidateSql == local.candidateSelect) {
+					local.candidateOptions.maxrows = Int(arguments.maxRows);
+				}
+				local.candidates = queryExecute(
+					local.candidateSql,
+					{
+						cutoff: {value: local.cutoff, cfsqltype: "cf_sql_timestamp"}
+					},
+					local.candidateOptions
+				);
+				if (local.candidates.recordCount == 0) {
+					return 0;
+				}
+				// Repeat the cutoff predicate so the blast radius stays limited to
+				// expired rows even if an application-supplied event id contains a comma
+				queryExecute(
+					"DELETE FROM wheels_events WHERE createdAt < :cutoff AND id IN (:ids)",
+					{
+						cutoff: {value: local.cutoff, cfsqltype: "cf_sql_timestamp"},
+						ids: {value: ValueList(local.candidates.id), cfsqltype: "cf_sql_varchar", list: true}
+					},
+					{datasource: variables.$datasource}
+				);
+				return local.candidates.recordCount;
+			}
+
+			queryExecute(
+				"DELETE FROM wheels_events WHERE createdAt < :cutoff",
+				{
+					cutoff: {value: local.cutoff, cfsqltype: "cf_sql_timestamp"}
+				},
+				{datasource: variables.$datasource, result: "local.deleteResult"}
+			);
+			if (StructKeyExists(local, "deleteResult") && StructKeyExists(local.deleteResult, "recordCount")) {
+				return local.deleteResult.recordCount;
+			}
+			return 0;
+		} catch (any e) {
+			writeLog(
+				text="DatabaseAdapter cleanup error: #e.message#",
+				type="error",
+				file="wheels_channels"
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * Throttled cleanup on the publish path — runs at most once every 5 minutes
+	 * (every 15 seconds while a backlog is draining) and deletes at most
+	 * cleanupBatchSize rows per pass so no single publish() blocks on a large
+	 * DELETE. Full sweeps remain available via cleanup() for scheduled tasks.
+	 */
+	private void function $maybeCleanup() {
+		local.now = GetTickCount() / 1000;
+		local.interval = variables.cleanupBacklog ? 15 : 300;
+		if (local.now - variables.lastCleanup > local.interval) {
+			variables.lastCleanup = local.now;
+			local.deleted = cleanup(maxRows = variables.cleanupBatchSize);
+			variables.cleanupBacklog = local.deleted >= variables.cleanupBatchSize;
+		}
+	}
+
+	/**
+	 * Auto-create the wheels_events table if it doesn't exist.
+	 * Pattern copied from Job.cfc $ensureJobTable().
+	 */
+	private boolean function $ensureEventsTable() {
+		if (variables.tableVerified) {
+			return true;
+		}
+
+		local.dbType = $detectDatabaseType();
+
+		// Probe for the table. Any SELECT error is treated as "missing" and falls
+		// through to the CREATE below — the catch must not return or throw (hardened,
+		// ChannelHardenerSpec S3). A catch body cannot persist a local. write on
+		// BoxLang (cross-engine invariant), so the existence flag lives in a bare
+		// struct read and written WITHOUT the local. prefix.
+		var probe = {tableExists = true};
+		try {
+			queryExecute(
+				"SELECT COUNT(*) AS cnt FROM wheels_events WHERE 1=0",
+				{},
+				{datasource: variables.$datasource}
+			);
+		} catch (any e) {
+			probe.tableExists = false;
+		}
+
+		if (!probe.tableExists) {
+			try {
+				if (local.dbType == "oracle") {
+					local.varcharType = "VARCHAR2";
+					local.textType = "CLOB";
+					local.datetimeType = "TIMESTAMP";
+				} else if (local.dbType == "postgresql") {
+					local.varcharType = "VARCHAR";
+					local.textType = "TEXT";
+					local.datetimeType = "TIMESTAMP";
+				} else if (local.dbType == "h2") {
+					local.varcharType = "VARCHAR";
+					local.textType = "CLOB";
+					local.datetimeType = "TIMESTAMP";
+				} else if (local.dbType == "sqlserver") {
+					local.varcharType = "VARCHAR";
+					local.textType = "TEXT";
+					local.datetimeType = "DATETIME2";
+				} else {
+					local.varcharType = "VARCHAR";
+					local.textType = "TEXT";
+					// DATETIME(6): sub-second precision narrows how often two publishes
+					// tie. The seq tiebreaker is what guarantees order within a tie.
+					local.datetimeType = "DATETIME(6)";
+				}
+
+				// Monotonic identity column where the dialect can declare one inline.
+				// SQLite (rowid) and unknown dialects (id) get none here and are
+				// resolved by $ensureOrderColumn().
+				local.seqDDL = $seqColumnDDL(local.dbType);
+				local.seqLine = Len(local.seqDDL) ? (local.seqDDL & ",") : "";
+
+				queryExecute("
+					CREATE TABLE wheels_events (
+						#local.seqLine#
+						id #local.varcharType#(255) NOT NULL PRIMARY KEY,
+						channel #local.varcharType#(255) NOT NULL,
+						event #local.varcharType#(255) NOT NULL,
+						data #local.textType#,
+						createdAt #local.datetimeType# NOT NULL
+					)
+				", {}, {datasource: variables.$datasource});
+
+				try {
+					queryExecute(
+						"CREATE INDEX idx_wevents_channel ON wheels_events (channel, createdAt)",
+						{},
+						{datasource: variables.$datasource}
+					);
+					queryExecute(
+						"CREATE INDEX idx_wevents_cleanup ON wheels_events (createdAt)",
+						{},
+						{datasource: variables.$datasource}
+					);
+				} catch (any indexError) {
+					// Indexes are optional
+				}
+
+				writeLog(text="Auto-created wheels_events table", type="information", file="wheels_channels");
+			} catch (any createError) {
+				writeLog(
+					text="Failed to auto-create wheels_events table: #createError.message#",
+					type="error",
+					file="wheels_channels"
+				);
+				return false;
+			}
+		}
+
+		// Resolve (and, for a pre-existing table, upgrade to) the monotonic order
+		// column. Re-probed on every fresh instance rather than trusting a permanent
+		// did-this flag, so a table created before this column existed still gains it.
+		variables.$orderColumn = $ensureOrderColumn(local.dbType);
+		variables.tableVerified = true;
+		return true;
+	}
+
+	/**
+	 * The DB-native identity column definition used to break createdAt ties, or ""
+	 * when the dialect has no inline-declarable identity column (SQLite — uses rowid —
+	 * and any unknown dialect — falls back to id). There is no portable identity
+	 * syntax, so each engine spells it differently. CockroachDB reports as PostgreSQL
+	 * over the pg wire, so it shares that branch; its SERIAL default is unique_rowid()
+	 * (NOT monotonic), which is exactly why this uses GENERATED AS IDENTITY — a real
+	 * sequence — rather than SERIAL.
+	 */
+	private string function $seqColumnDDL(required string dbType) {
+		switch (arguments.dbType) {
+			case "sqlserver":
+				return "seq BIGINT IDENTITY(1,1) NOT NULL";
+			case "mysql":
+				// AUTO_INCREMENT must be a key; id holds the PK, so make seq UNIQUE.
+				return "seq BIGINT NOT NULL AUTO_INCREMENT UNIQUE";
+			case "postgresql":
+				return "seq BIGINT GENERATED BY DEFAULT AS IDENTITY";
+			case "oracle":
+				return "seq NUMBER GENERATED BY DEFAULT AS IDENTITY";
+			case "h2":
+				return "seq BIGINT AUTO_INCREMENT";
+			default:
+				return "";
+		}
+	}
+
+	/**
+	 * Resolve the column poll() orders by to break createdAt ties, upgrading a
+	 * pre-existing table in place when necessary:
+	 *   - sqlite -> "rowid" (built-in, insertion-monotonic; no schema change). NOTE:
+	 *     without AUTOINCREMENT, SQLite may REUSE the highest rowid after the newest
+	 *     row is deleted, and restarts numbering if the table empties. poll() guards
+	 *     the resume path against a vanished lastEventId, and events are retained only
+	 *     briefly, so a reused rowid can only ever affect ordering within one createdAt
+	 *     tick — never cross-tick order.
+	 *   - seq dialects -> "seq", adding the column to an existing table via ALTER when
+	 *     missing (existing rows back-fill in physical order and are <= the retention
+	 *     window old). If the ALTER is rejected, log clearly and fall back to "id"
+	 *     rather than leave poll() ordering by a column that does not exist.
+	 *   - unknown dialect -> "id" (stable within a run, not time-ordered).
+	 */
+	private string function $ensureOrderColumn(required string dbType) {
+		if (arguments.dbType == "sqlite") {
+			return "rowid";
+		}
+		local.seqDDL = $seqColumnDDL(arguments.dbType);
+		if (!Len(local.seqDDL)) {
+			return "id";
+		}
+		// "Ready" means more than "the column exists": on the pg-family staged path the
+		// column is briefly present with no default, and treating that as done would let a
+		// concurrent publish insert a NULL seq. $seqColumnReady() requires a default/identity
+		// there, so a half-finished upgrade is re-entered and completed below.
+		if ($seqColumnReady(arguments.dbType)) {
+			return "seq";
+		}
+
+		// Capability-based, not engine-name-based: $detectDatabaseType() reports CockroachDB
+		// as "postgresql" (pg wire), so rather than sniff the version we try each ADD shape
+		// and keep whichever produces a READY column. The re-check after each attempt is
+		// authoritative over the ALTER's own result (concurrent instances race the add).
+		var errs = {identity = "", sequence = ""};
+
+		// Attempt 1: the standard identity ALTER (atomic — column + identity together).
+		// Works on SQL Server, MySQL, Oracle, H2 and real PostgreSQL. Oracle spells ADD
+		// with the column def in parentheses.
+		local.alter = (arguments.dbType == "oracle")
+			? "ALTER TABLE wheels_events ADD (#local.seqDDL#)"
+			: "ALTER TABLE wheels_events ADD #local.seqDDL#";
+		try {
+			queryExecute(local.alter, {}, {datasource: variables.$datasource});
+		} catch (any identityError) {
+			errs.identity = identityError.message;
+		}
+		if ($seqColumnReady(arguments.dbType)) {
+			return "seq";
+		}
+
+		// Attempt 2: a Postgres-wire sequence-backed column, for a pg-wire engine that
+		// implements sequences but NOT ALTER ADD ... GENERATED AS IDENTITY on an existing
+		// table (CockroachDB). CockroachDB also cannot ADD a column whose DEFAULT is a
+		// sequence to a POPULATED table in one step — nextval() can't be evaluated during a
+		// schema backfill (crdb #42508) — so build it in idempotent stages, each of which
+		// completes a partial prior run and avoids a backfill-time sequence call:
+		//   1. create the sequence (default CACHE 1 -> monotonic across nodes),
+		//   2. add the column nullable, ONLY if a prior run didn't already add it,
+		//   3. point its DEFAULT at the sequence — this is what makes the column READY, so a
+		//      concurrent probe never treats a default-less column as done,
+		//   4. backfill existing rows in createdAt,id order with a plain UPDATE (DML, not a
+		//      schema backfill), touching only WHERE seq IS NULL.
+		// Step 3 precedes step 4 so new publishes are covered before the backfill runs.
+		// Gated to the postgresql family because nextval('name') is pg-specific. Fresh
+		// CockroachDB CREATE already succeeds with GENERATED AS IDENTITY (no rows to
+		// backfill); both yield a monotonic INT8 seq, so fresh and upgraded tables order
+		// identically.
+		if (arguments.dbType == "postgresql") {
+			try {
+				queryExecute(
+					"CREATE SEQUENCE IF NOT EXISTS wheels_events_seq",
+					{},
+					{datasource: variables.$datasource}
+				);
+				if (!$seqColumnExists()) {
+					queryExecute(
+						"ALTER TABLE wheels_events ADD COLUMN seq INT8",
+						{},
+						{datasource: variables.$datasource}
+					);
+				}
+				queryExecute(
+					"ALTER TABLE wheels_events ALTER COLUMN seq SET DEFAULT nextval('wheels_events_seq')",
+					{},
+					{datasource: variables.$datasource}
+				);
+				queryExecute(
+					"UPDATE wheels_events AS w
+					SET seq = s.rn
+					FROM (
+						SELECT id, nextval('wheels_events_seq') AS rn
+						FROM (
+							SELECT id FROM wheels_events WHERE seq IS NULL ORDER BY createdAt ASC, id ASC
+						) AS ordered
+					) AS s
+					WHERE w.id = s.id",
+					{},
+					{datasource: variables.$datasource}
+				);
+			} catch (any sequenceError) {
+				errs.sequence = sequenceError.message;
+			}
+			if ($seqColumnReady(arguments.dbType)) {
+				return "seq";
+			}
+		}
+
+		// Both shapes failed: degrade to createdAt+id ordering, recording the real reason
+		// from each attempt (not the generic probe error) so the limitation is diagnosable.
+		local.identityReason = Len(errs.identity) ? errs.identity : "n/a";
+		local.sequenceReason = Len(errs.sequence) ? errs.sequence : "n/a";
+		writeLog(
+			text="Could not add a usable seq column to wheels_events on #arguments.dbType# (identity ALTER: #local.identityReason#; sequence ALTER: #local.sequenceReason#); ordering falls back to createdAt+id, so events sharing a timestamp tick may order arbitrarily.",
+			type="warning",
+			file="wheels_channels"
+		);
+		return "id";
+	}
+
+	/**
+	 * True when the wheels_events table currently has a seq column. A cheap WHERE 1=0
+	 * probe used to decide whether the monotonic column needs adding and, after an ALTER,
+	 * whether the column now exists at all.
+	 */
+	private boolean function $seqColumnExists() {
+		try {
+			queryExecute("SELECT seq FROM wheels_events WHERE 1=0", {}, {datasource: variables.$datasource});
+			return true;
+		} catch (any e) {
+			return false;
+		}
+	}
+
+	/**
+	 * True when wheels_events has a seq column that is actually USABLE for ordering, not
+	 * merely present. On engines whose identity ALTER is atomic (SQL Server, MySQL, Oracle,
+	 * H2, real PostgreSQL) column existence is enough. On the postgresql family the column
+	 * is built in stages and is briefly present with no default; there, "ready" also
+	 * requires a column default or identity — so a concurrent probe never treats a
+	 * default-less column as done (which would let new rows insert a NULL seq and silently
+	 * break the seq-based resume), and a half-finished upgrade is re-entered and completed.
+	 */
+	private boolean function $seqColumnReady(required string dbType) {
+		if (!$seqColumnExists()) {
+			return false;
+		}
+		if (arguments.dbType != "postgresql") {
+			return true;
+		}
+		try {
+			local.q = queryExecute(
+				"SELECT 1 AS ready
+				FROM information_schema.columns
+				WHERE table_name = 'wheels_events'
+				AND table_schema = current_schema()
+				AND column_name = 'seq'
+				AND (column_default IS NOT NULL OR is_identity = 'YES')",
+				{},
+				{datasource: variables.$datasource}
+			);
+			return local.q.recordCount GT 0;
+		} catch (any e) {
+			// Can't introspect — treat as not ready so the idempotent staged steps run.
+			return false;
+		}
+	}
+
+	/**
+	 * Detect the database type from the datasource via JDBC metadata.
+	 * Returns: "oracle", "postgresql", "h2", "mysql", "sqlserver", "sqlite", or "default".
+	 *
+	 * Public with $ prefix (internal naming convention), matching its caller
+	 * $applyRowBound, so a spec can reproduce the dialect the bounded cleanup
+	 * pass actually chose on the engine/database pair it is running against.
+	 */
+	public string function $detectDatabaseType() {
+		try {
+			cfdbinfo(type="version", datasource="#variables.$datasource#", name="local.info");
+			local.product = local.info.database_productname;
+			if (FindNoCase("oracle", local.product)) return "oracle";
+			if (FindNoCase("postgre", local.product)) return "postgresql";
+			if (FindNoCase("h2", local.product)) return "h2";
+			if (FindNoCase("mysql", local.product) || FindNoCase("mariadb", local.product)) return "mysql";
+			if (FindNoCase("sql server", local.product)) return "sqlserver";
+			if (FindNoCase("sqlite", local.product)) return "sqlite";
+		} catch (any e) {
+			// cfdbinfo not available — fall through to default
+		}
+		return "default";
+	}
+
+	/**
+	 * Rewrite a candidate SELECT so the row bound is applied in dialect SQL and the
+	 * database can do an index-assisted top-n read instead of materializing every
+	 * matching row and relying on client-side truncation.
+	 *
+	 * - sqlserver: SELECT TOP n ...
+	 * - oracle: ... FETCH FIRST n ROWS ONLY
+	 * - mysql / postgresql / sqlite / h2: ... LIMIT n
+	 * - anything else (incl. "default" when $detectDatabaseType() falls back on a
+	 *   cfdbinfo failure): statement UNCHANGED — appending LIMIT would be a syntax
+	 *   error on SQL Server/Oracle. Returning the statement unchanged is the signal
+	 *   the caller uses to fall back to the driver-level maxrows option, which is
+	 *   then the only bound on the read. That option is not portable (BoxLang routes
+	 *   it to a pgjdbc method that does not exist), so it is used only here, where
+	 *   the alternative is no bound at all.
+	 *
+	 * The bound is hardened with Int() so only a plain integer is ever interpolated
+	 * into the SQL string. A bound of zero or less returns the statement unchanged.
+	 * Public with $ prefix (internal naming convention) so it stays unit-testable.
+	 *
+	 * @sqlText The SELECT statement to bound.
+	 * @dbType Database type as returned by $detectDatabaseType().
+	 * @maxRows Maximum number of rows the statement may return.
+	 */
+	public string function $applyRowBound(
+		required string sqlText,
+		required string dbType,
+		required numeric maxRows
+	) {
+		local.bound = Int(arguments.maxRows);
+		if (local.bound <= 0) {
+			return arguments.sqlText;
+		}
+		if (arguments.dbType == "sqlserver") {
+			return ReplaceNoCase(arguments.sqlText, "SELECT ", "SELECT TOP #local.bound# ", "one");
+		}
+		if (arguments.dbType == "oracle") {
+			return arguments.sqlText & " FETCH FIRST #local.bound# ROWS ONLY";
+		}
+		if (ListFindNoCase("mysql,postgresql,sqlite,h2", arguments.dbType)) {
+			return arguments.sqlText & " LIMIT #local.bound#";
+		}
+		// Unknown dialect (incl. the "default" cfdbinfo-failure fallback): leave the
+		// statement alone rather than risk invalid syntax; driver maxrows bounds it.
+		return arguments.sqlText;
+	}
+
+}

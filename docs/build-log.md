@@ -1,0 +1,38 @@
+# Build Log: OhmeGardens.org Rebuild in CMSAdmin 2.0
+
+- 2026-10-19: Started Phase 0 discovery across CMSAdmin 2.0, ChelanCounty.gov, and SQL Server datasource ChelanCountyWebsite.
+- 2026-10-19: Inspected database schema: discovered dbo.cms_workspaces, dbo.pages, dbo.navigation_menus, dbo.forms, dbo.media_assets.
+- 2026-10-19: Confirmed no ohme-gardens workspace, pages, navigation menus, or files exist in CMSAdmin 2.0 or ChelanCountyWebsite database.
+- 2026-10-19: Documented architecture, table models, shortcode patterns, routing mechanisms, and workspace filesystem layout in docs/cms-findings.md.
+- 2026-10-19: Presented Phase 0 findings summary and exact Phase 1 SQL scaffold statements to user for approval.
+- 2026-10-19: Executed Phase 1 SQL statements: inserted 'ohme-gardens' workspace into dbo.cms_workspaces.
+- 2026-10-19: Executed Phase 1 SQL statements: inserted 5 section landing pages ('thegardens', 'planyourvisit', 'events', 'planyourspecialevent', 'getinvolved') into dbo.pages.
+- 2026-10-19: Executed Phase 1 SQL statements: inserted 'top' main navigation menu and 6 menu items into dbo.navigation_menus and dbo.navigation_menu_items.
+- 2026-10-19: Provisioned filesystem asset storage at C:\inetpub\chelan-county\files\ohme-gardens\images and \documents (verified via C:\inetpub\CMSAdmin2.0\files junction).
+- 2026-10-19: Verified test hostname mapping in C:\Windows\System32\drivers\etc\hosts (127.0.0.1 ohmegardens.org).
+- 2026-10-19: Created docs/guide-for-dummies.md explaining the complete architecture and concepts in plain English.
+- 2026-10-19: Completed Phase 1 (Scaffold).
+- 2026-10-19: Phase 2: Built polite crawler crawl.js with 1 request/sec rate limiting and User-Agent identification.
+- 2026-10-19: Crawled all 33 live pages and generated capture/pages.json with titles, metadata, breadcrumbs, subnav order, HTML, and image lists.
+- 2026-10-19: Downloaded all 105 assets (images, SVGs, documents) to capture/assets/ with 0 failures.
+- 2026-10-19: Downloaded all core CSS, JS, and font files locally to stylesheets/, javascripts/, and fonts/.
+- 2026-10-19: Populated workspace storage C:\inetpub\CMSAdmin2.0\files\ohme-gardens\images\ with all 105 site, garden gallery, wedding gallery, and event images.
+- 2026-10-19: Compared crawl inventory against PLAN.md: 33/33 exact match (0 missing, 0 new). Phase 2 complete.
+- 2026-10-19: Scaffolded standalone CFWheels app in C:\inetpub\OhmeGardens.org with Application.cfc, index.cfm, web.config, routes.cfm, and vendor/wheels.
+- 2026-10-19: Built Gardens.cfc controller and core view templates in app/views/gardens/: home.cfm, page.cfm, section.cfm, gallery.cfm, contact.cfm, camera.cfm, faq.cfm, legal.cfm.
+- 2026-10-19: Built master layout app/views/layout.cfm with 5 dropdown menus, top bar contact info, Spanish translation link, and Donate button. Zero external CDNs.
+- 2026-10-19: Phase 4: Generated build-import-sql.js to clean captured HTML, rewrite image URLs to /files/ohme-gardens/images/, and strip template-rendered toolbars/social links.
+- 2026-10-19: Executed import_pages.sql: updated 5 section landing pages and inserted all 28 interior, standalone, and home pages into dbo.pages with accurate ParentID hierarchy.
+- 2026-10-19: Downloaded external Square S3 event posters (7 images) to workspace images/ and rewrote URLs in dbo.pages to local assets.
+- 2026-10-19: Downloaded Bench Map PDF and saved to workspace documents/ storage; updated adopt-a-bench document link in dbo.pages.
+- 2026-10-19: Fixed live site photo gallery breadcrumb bug in gallery.cfm so 'The Gardens' links to /thegardens instead of /getinvolved.
+- 2026-10-19: Fixed memorials-and-tributes email link in dbo.pages from 'http://info@ohmegardens.com' to 'mailto:info@ohmegardens.org'.
+- 2026-10-19: Phase 5: Verified Magnific Popup lightbox for garden and wedding galleries, contact form honeypot anti-spam and validation, Tripleseat booking link, and live camera stream.
+- 2026-10-19: Phase 6: Executed QA audit (qa-check.js and audit-a11y.js): verified 31/31 navigation routes, 0 CDN violations, 100% image alt attribute coverage, and single-H1 heading hierarchy.
+- 2026-10-19: Added print stylesheet (@media print) to stylesheets/ohme-custom.css to hide nav, footer, and interactive widgets during printing.
+- 2026-10-19: Phase 7: Created robots.txt, canonical sitemap.xml (33 URLs), and config/redirects.json with 32 alias/legacy 301 redirect rules in web.config.
+- 2026-10-19: Authored comprehensive go-live cutover and rollback checklist in docs/cutover-and-rollback-checklist.md.
+- 2026-10-19: Updated docs/guide-for-dummies.md with non-technical explanations for all phases, features, asset storage, and cutover procedures.
+- 2026-10-19: Resolved onapplicationstart.cfm include error by copying CFWheels event hooks from ChelanCounty.gov into app/events/.
+- 2026-10-19: Updated index.cfm to CFWheels 4.2 dispatch.$request() syntax; populated config environment subdirectories.
+- 2026-10-19: Verified 100% 200 OK live responses across all section, interior, gallery, camera, FAQ, contact, and legal routes on http://ohmegardens.org/.
