@@ -164,7 +164,11 @@
 			<div class="col-12 col-sm-6 col-lg-3 feature-tile-col">
 				<a href="/planyourvisit/page/gardens-membership" class="feature-tile tile-join gallery-image join" title="Ohme Gardens Membership">
 					<div class="feature-tile-content">
-						<div class="feature-tile-icon"><i class="fa fa-id-card-o" aria-hidden="true"></i></div>
+						<div class="feature-tile-icon">
+							<svg class="handshake-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512" width="1em" height="1em" fill="currentColor" aria-hidden="true" style="display: inline-block; vertical-align: -0.15em;">
+								<path d="M323.4 85.2l-96.8 78.4c-16.1 13-29.2 29.5-38.2 48.1l-14.5 30c-4.4 9.1-13.6 14.9-23.7 14.9H80v160h70.1c11.3 0 22.3-3.6 31.4-10.3l48.8-35.8c7.4-5.4 16.3-8.3 25.5-8.3h76.3c15.7 0 31.1-4.7 44.1-13.4l82.7-55.1c10.4-6.9 16.7-18.7 16.7-31.3V144c0-17.7-14.3-32-32-32h-85.3c-12.7 0-25 5.1-34.1 14.2l-34.9 34.9c-6.2 6.2-16.4 6.2-22.6 0s-6.2-16.4 0-22.6l34.9-34.9c15.1-15.1 35.6-23.6 57-23.6H384c35.3 0 64 28.7 64 64v113.4c0 25.2-12.6 48.7-33.5 62.6l-82.7 55.1c-8.7 5.8-19 8.9-29.4 8.9H226c-13.7 0-27.1 4.3-38.3 12.4l-48.8 35.8c-15.2 11.2-33.5 17.2-52.4 17.2H64c-35.3 0-64-28.7-64-64V256c0-35.3 28.7-64 64-64h58.3c3.4 0 6.4-1.9 7.9-5l14.5-30c12-24.8 29.5-46.7 51-64.1l96.8-78.4c17.5-14.2 39.4-22 62-22H400c17.7 0 32 14.3 32 32s-14.3 32-32 32h-45.3c-11.3 0-22.3 3.9-31.3 10.7zM576 192c35.3 0 64 28.7 64 64v160c0 35.3-28.7 64-64 64h-32c-17.7 0-32-14.3-32-32V224c0-17.7 14.3-32 32-32h32z"/>
+							</svg>
+						</div>
 						<h3 class="feature-tile-title font-playfair">Join &nbsp;<i class="fa fa-angle-right" aria-hidden="true"></i></h3>
 						<p class="feature-tile-desc">An Ohme Gardens membership is a perfect gift. Enjoy unlimited season admission, reciprocal admission benefits, guest passes, and special event invitations.</p>
 					</div>

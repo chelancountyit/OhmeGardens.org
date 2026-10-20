@@ -95,3 +95,4 @@ node tests/test-wcag-contrast.js
 ## License
 
 Published and maintained by **Chelan County Information Technology Department** for Ohme Gardens County Park, Wenatchee, WA.
+
